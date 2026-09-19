@@ -94,6 +94,7 @@ const replaceLastStep = (
   if (current === undefined) return checkpoint
   return {
     ...checkpoint,
+    revision: checkpoint.revision + 1,
     stepExecutions: [...checkpoint.stepExecutions.slice(0, -1), { ...current, status }],
   }
 }

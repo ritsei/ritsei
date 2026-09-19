@@ -103,10 +103,43 @@ export {
   makePostgresProcessOperatorStore,
   ProcessOperatorStore,
 } from "./src/operations-store.ts"
+export { ProcessOperatorControl } from "./src/operations-store.ts"
 export type {
-  ProcessOperatorControl,
+  ProcessOperatorControl as ProcessOperatorControlType,
   ProcessOperatorStore as ProcessOperatorStoreShape,
 } from "./src/operations-store.ts"
+export {
+  GetProcessRuntimeInstanceInput,
+  ListProcessCatalogInput,
+  ListProcessOperatorControlsInput,
+  ListProcessOperatorInboxInput,
+  ListProcessRuntimeInstancesInput,
+  ListProcessWorkflowRunsInput,
+  makeProcessStudioService,
+  ProcessCatalogAction,
+  ProcessCatalogDescriptor,
+  ProcessCatalogEvent,
+  ProcessJobInboxItem,
+  ProcessOperatorInbox,
+  ProcessRuntimeDetail,
+  ProcessRuntimeInstance,
+  ProcessRuntimeInstanceNotFound,
+  ProcessRuntimeOperatorInput,
+  ProcessStaticValidation,
+  ProcessStudioRecordCorrupt,
+  ProcessStudioService,
+  ProcessWorkflowRun,
+  ValidateProcessDefinitionInput,
+} from "./src/studio.ts"
+export type {
+  ProcessCatalogDescriptor as ProcessCatalogDescriptorType,
+  ProcessJobInboxItem as ProcessJobInboxItemType,
+  ProcessOperatorInbox as ProcessOperatorInboxType,
+  ProcessRuntimeDetail as ProcessRuntimeDetailType,
+  ProcessRuntimeInstance as ProcessRuntimeInstanceType,
+  ProcessStudioService as ProcessStudioServiceShape,
+  ProcessWorkflowRun as ProcessWorkflowRunType,
+} from "./src/studio.ts"
 export {
   OrderCancellationCompletedEventPayload,
   OrderConfirmationCompletedEventPayload,
@@ -179,4 +212,6 @@ export {
   ProcessReleasePostgresLive,
   ProcessRuntimeMemoryLive,
   ProcessRuntimePostgresLive,
+  ProcessStudioLive,
+  ProcessStudioPostgresLive,
 } from "./src/layers.ts"
