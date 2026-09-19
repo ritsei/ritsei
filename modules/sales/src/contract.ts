@@ -40,11 +40,13 @@ export const Customer = Schema.Struct({
   name: TrimmedNonEmptyString,
   email: LowercaseTrimmedNonEmptyString,
 })
+export const QuotationStatus = Schema.Literals(["draft", "sent", "accepted", "rejected", "expired"])
+export const SalesOrderStatus = Schema.Literals(["draft", "confirmed", "cancelled"])
 export const Quotation = Schema.Struct({
   id: Uuid,
   tenantId: Uuid,
   customerId: Uuid,
-  status: Schema.Literals(["draft", "sent", "accepted", "rejected", "expired"]),
+  status: QuotationStatus,
   total: Money,
 })
 export const SalesOrderLine = Schema.Struct({
@@ -57,7 +59,7 @@ export const SalesOrder = Schema.Struct({
   tenantId: Uuid,
   customerId: Uuid,
   quotationId: Schema.NullOr(Uuid),
-  status: Schema.Literals(["draft", "confirmed", "cancelled"]),
+  status: SalesOrderStatus,
   confirmedAt: Schema.NullOr(InstantString),
   total: Money,
   lines: Schema.Array(SalesOrderLine).check(Schema.isMinLength(1)),
@@ -78,11 +80,43 @@ export const SalesOrder = Schema.Struct({
 ))
 
 export type Customer = Schema.Schema.Type<typeof Customer>
+export type QuotationStatus = Schema.Schema.Type<typeof QuotationStatus>
 export type Quotation = Schema.Schema.Type<typeof Quotation>
+export type SalesOrderStatus = Schema.Schema.Type<typeof SalesOrderStatus>
 export type SalesOrderLine = Schema.Schema.Type<typeof SalesOrderLine>
 export type SalesOrder = Schema.Schema.Type<typeof SalesOrder>
 
 const ScopedInput = { principal: Principal, tenantId: Uuid }
+const ListLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))
+export const ListCustomersInput = Schema.Struct({
+  ...ScopedInput,
+  search: Schema.optionalKey(TrimmedNonEmptyString),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const GetCustomerInput = Schema.Struct({
+  ...ScopedInput,
+  customerId: Uuid,
+})
+export const ListQuotationsInput = Schema.Struct({
+  ...ScopedInput,
+  customerId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(QuotationStatus),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const GetQuotationInput = Schema.Struct({
+  ...ScopedInput,
+  quotationId: Uuid,
+})
+export const ListOrdersInput = Schema.Struct({
+  ...ScopedInput,
+  customerId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(SalesOrderStatus),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const GetOrderInput = Schema.Struct({
+  ...ScopedInput,
+  orderId: Uuid,
+})
 export const CreateCustomerInput = Schema.Struct({
   ...ScopedInput,
   name: NonEmptyString,
@@ -112,6 +146,12 @@ export const ConfirmOrderInput = Schema.Struct({
 export const CancelConfirmedOrderInput = Schema.Struct({ ...ScopedInput, orderId: Uuid })
 export const GetConfirmedOrderTotalInput = Schema.Struct({ ...ScopedInput, orderId: Uuid })
 
+export type ListCustomersCommand = Schema.Schema.Type<typeof ListCustomersInput>
+export type GetCustomerCommand = Schema.Schema.Type<typeof GetCustomerInput>
+export type ListQuotationsCommand = Schema.Schema.Type<typeof ListQuotationsInput>
+export type GetQuotationCommand = Schema.Schema.Type<typeof GetQuotationInput>
+export type ListOrdersCommand = Schema.Schema.Type<typeof ListOrdersInput>
+export type GetOrderCommand = Schema.Schema.Type<typeof GetOrderInput>
 export type CreateCustomerCommand = Schema.Schema.Type<typeof CreateCustomerInput>
 export type CreateQuotationCommand = Schema.Schema.Type<typeof CreateQuotationInput>
 export type CreateOrderCommand = Schema.Schema.Type<typeof CreateOrderInput>
@@ -124,6 +164,24 @@ type CommonFailure =
   | import("../../../foundation/mod.ts").DatabaseFailure
   | Schema.SchemaError
 export interface SalesService {
+  readonly listCustomers: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<Customer>, CommonFailure>
+  readonly getCustomer: (
+    input: unknown,
+  ) => Effect.Effect<Customer, CustomerNotFound | CommonFailure>
+  readonly listQuotations: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<Quotation>, CommonFailure>
+  readonly getQuotation: (
+    input: unknown,
+  ) => Effect.Effect<Quotation, QuotationNotFound | CommonFailure>
+  readonly listOrders: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<SalesOrder>, CommonFailure>
+  readonly getOrder: (
+    input: unknown,
+  ) => Effect.Effect<SalesOrder, SalesOrderNotFound | CommonFailure>
   readonly createCustomer: (
     input: unknown,
   ) => Effect.Effect<Customer, CustomerAlreadyExists | CommonFailure>

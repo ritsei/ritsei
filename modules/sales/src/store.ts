@@ -11,6 +11,12 @@ import type {
   CreateQuotationCommand,
   Customer,
   GetConfirmedOrderTotalCommand,
+  GetCustomerCommand,
+  GetOrderCommand,
+  GetQuotationCommand,
+  ListCustomersCommand,
+  ListOrdersCommand,
+  ListQuotationsCommand,
   Quotation,
   SalesOrder,
   SalesOrderLine,
@@ -56,10 +62,28 @@ export const toSalesOrder = (row: {
   status: row.status,
   confirmedAt: row.confirmedAt?.toISOString() ?? null,
   total: row.total,
-  lines,
+  lines: lines.map(({ itemId, quantity, unitPrice }) => ({ itemId, quantity, unitPrice })),
 })
 
 export interface SalesStore {
+  readonly listCustomers: (
+    input: ListCustomersCommand,
+  ) => Effect.Effect<ReadonlyArray<Customer>, DatabaseFailure>
+  readonly getCustomer: (
+    input: GetCustomerCommand,
+  ) => Effect.Effect<Customer | undefined, DatabaseFailure>
+  readonly listQuotations: (
+    input: ListQuotationsCommand,
+  ) => Effect.Effect<ReadonlyArray<Quotation>, DatabaseFailure>
+  readonly getQuotation: (
+    input: GetQuotationCommand,
+  ) => Effect.Effect<Quotation | undefined, DatabaseFailure>
+  readonly listOrders: (
+    input: ListOrdersCommand,
+  ) => Effect.Effect<ReadonlyArray<SalesOrder>, DatabaseFailure>
+  readonly getOrder: (
+    input: GetOrderCommand,
+  ) => Effect.Effect<SalesOrder | undefined, DatabaseFailure>
   readonly createCustomer: (
     input: CreateCustomerCommand,
   ) => Effect.Effect<Customer, CustomerAlreadyExists | DatabaseFailure>

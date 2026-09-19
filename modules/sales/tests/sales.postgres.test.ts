@@ -25,7 +25,9 @@ const postgresFailure = (effect: () => Promise<unknown>) =>
   Effect.tryPromise({ try: effect, catch: (cause) => cause }).pipe(Effect.flip)
 const capabilities = [
   SalesCapabilities.customerCreate,
+  SalesCapabilities.customerRead,
   SalesCapabilities.quotationCreate,
+  SalesCapabilities.quotationRead,
   SalesCapabilities.orderCreate,
   SalesCapabilities.orderConfirm,
   SalesCapabilities.orderRead,

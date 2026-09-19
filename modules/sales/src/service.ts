@@ -14,9 +14,17 @@ import {
   CreateOrderInput,
   CreateQuotationInput,
   GetConfirmedOrderTotalInput,
+  GetCustomerInput,
+  GetOrderInput,
+  GetQuotationInput,
+  ListCustomersInput,
+  ListOrdersInput,
+  ListQuotationsInput,
   SalesService,
 } from "./contract.ts"
 import {
+  CustomerNotFound,
+  QuotationNotFound,
   SalesOrderConfirmationIdempotencyConflict,
   SalesOrderInvalidState,
   SalesOrderNotFound,
@@ -33,6 +41,54 @@ export const makeSalesServiceFromStore = <R>(storeEffect: Effect.Effect<SalesSto
       capability: string,
     ) =>
       authorization.authorize({ principal: input.principal, tenantId: input.tenantId, capability })
+    const listCustomers = Effect.fn("SalesService.listCustomers")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(ListCustomersInput)(input)
+      yield* authorize(decoded, SalesCapabilities.customerRead)
+      return yield* store.listCustomers(decoded)
+    })
+    const getCustomer = Effect.fn("SalesService.getCustomer")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(GetCustomerInput)(input)
+      yield* authorize(decoded, SalesCapabilities.customerRead)
+      const customer = yield* store.getCustomer(decoded)
+      if (customer === undefined) {
+        return yield* Effect.fail(
+          new CustomerNotFound({ tenantId: decoded.tenantId, customerId: decoded.customerId }),
+        )
+      }
+      return customer
+    })
+    const listQuotations = Effect.fn("SalesService.listQuotations")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(ListQuotationsInput)(input)
+      yield* authorize(decoded, SalesCapabilities.quotationRead)
+      return yield* store.listQuotations(decoded)
+    })
+    const getQuotation = Effect.fn("SalesService.getQuotation")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(GetQuotationInput)(input)
+      yield* authorize(decoded, SalesCapabilities.quotationRead)
+      const quotation = yield* store.getQuotation(decoded)
+      if (quotation === undefined) {
+        return yield* Effect.fail(
+          new QuotationNotFound({ tenantId: decoded.tenantId, quotationId: decoded.quotationId }),
+        )
+      }
+      return quotation
+    })
+    const listOrders = Effect.fn("SalesService.listOrders")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(ListOrdersInput)(input)
+      yield* authorize(decoded, SalesCapabilities.orderRead)
+      return yield* store.listOrders(decoded)
+    })
+    const getOrder = Effect.fn("SalesService.getOrder")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(GetOrderInput)(input)
+      yield* authorize(decoded, SalesCapabilities.orderRead)
+      const order = yield* store.getOrder(decoded)
+      if (order === undefined) {
+        return yield* Effect.fail(
+          new SalesOrderNotFound({ tenantId: decoded.tenantId, orderId: decoded.orderId }),
+        )
+      }
+      return order
+    })
     const createCustomer = Effect.fn("SalesService.createCustomer")(function* (input: unknown) {
       const decoded = yield* Schema.decodeUnknownEffect(CreateCustomerInput)(input)
       yield* authorize(decoded, SalesCapabilities.customerCreate)
@@ -154,6 +210,12 @@ export const makeSalesServiceFromStore = <R>(storeEffect: Effect.Effect<SalesSto
       },
     )
     return {
+      listCustomers,
+      getCustomer,
+      listQuotations,
+      getQuotation,
+      listOrders,
+      getOrder,
       createCustomer,
       createQuotation,
       createOrder,

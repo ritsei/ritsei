@@ -37,7 +37,9 @@ const confirmationMetadata = {
 } as const
 const capabilities = [
   "sales.customer.create",
+  "sales.customer.read",
   "sales.quotation.create",
+  "sales.quotation.read",
   "sales.order.create",
   "sales.order.confirm",
   "sales.order.read",
@@ -299,6 +301,82 @@ describe("sales contract", () => {
       assert.instanceOf(error, QuotationCustomerMismatch)
       assert.strictEqual(error.quotationId, quotation.id)
       assert.strictEqual(error.customerId, orderingCustomer.id)
+    })))
+
+  it.effect("lists tenant-scoped customer, quotation, and order projections", () =>
+    withSales(Effect.gen(function* () {
+      const sales = yield* SalesService
+      const customer = yield* sales.createCustomer({
+        principal,
+        tenantId,
+        name: "Read Customer",
+        email: "read@example.test",
+      })
+      const otherCustomer = yield* sales.createCustomer({
+        principal,
+        tenantId: "00000000-0000-4000-8000-000000000002",
+        name: "Other Tenant Customer",
+        email: "other-read@example.test",
+      })
+      const quotation = yield* sales.createQuotation({
+        principal,
+        tenantId,
+        customerId: customer.id,
+        total: "10.00",
+      })
+      const order = yield* sales.createOrder({
+        principal,
+        tenantId,
+        customerId: customer.id,
+        quotationId: quotation.id,
+        lines: [{
+          itemId: "00000000-0000-4000-8000-000000000041",
+          quantity: "1",
+          unitPrice: "10.00",
+        }],
+      })
+      assert.deepStrictEqual(
+        yield* sales.listCustomers({ principal, tenantId, search: "READ", limit: 10 }),
+        [customer],
+      )
+      assert.deepStrictEqual(
+        yield* sales.getCustomer({ principal, tenantId, customerId: customer.id }),
+        customer,
+      )
+      assert.deepStrictEqual(
+        yield* sales.listQuotations({ principal, tenantId, customerId: customer.id, limit: 10 }),
+        [quotation],
+      )
+      assert.deepStrictEqual(
+        yield* sales.getQuotation({ principal, tenantId, quotationId: quotation.id }),
+        quotation,
+      )
+      assert.deepStrictEqual(
+        yield* sales.listOrders({
+          principal,
+          tenantId,
+          customerId: customer.id,
+          status: "draft",
+          limit: 10,
+        }),
+        [order],
+      )
+      assert.deepStrictEqual(
+        yield* sales.getOrder({ principal, tenantId, orderId: order.id }),
+        order,
+      )
+      assert.deepStrictEqual(
+        yield* sales.listCustomers({
+          principal,
+          tenantId: "00000000-0000-4000-8000-000000000002",
+          limit: 10,
+        }),
+        [otherCustomer],
+      )
+      assert.deepStrictEqual(
+        yield* sales.listCustomers({ principal, tenantId, search: "other-read", limit: 10 }),
+        [],
+      )
     })))
 
   it.effect("creates customer, quotation, and order", () =>

@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq, ilike, inArray, or } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
@@ -13,6 +13,12 @@ import type {
   CreateOrderCommand,
   CreateQuotationCommand,
   GetConfirmedOrderTotalCommand,
+  GetCustomerCommand,
+  GetOrderCommand,
+  GetQuotationCommand,
+  ListCustomersCommand,
+  ListOrdersCommand,
+  ListQuotationsCommand,
   SalesOrder,
 } from "./contract.ts"
 import {
@@ -48,15 +54,138 @@ const orderSelection = {
   total: orders.total,
 }
 const orderLineSelection = {
+  id: orderLines.id,
+  orderId: orderLines.orderId,
   itemId: orderLines.itemId,
   quantity: orderLines.quantity,
   unitPrice: orderLines.unitPrice,
+}
+type SalesOrderLineRow = {
+  readonly id: string
+  readonly orderId: string
+  readonly itemId: string
+  readonly quantity: string
+  readonly unitPrice: string
 }
 
 export const makeSalesPostgresStore = Effect.fn("Sales.makePostgresStore")(function* () {
   const database = yield* Database
   const clock = yield* Clock.Clock
   const now = () => new Date(clock.currentTimeMillisUnsafe())
+  const escapeLikePattern = (value: string): string =>
+    value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")
+  const listCustomers = Effect.fn("SalesStore.listCustomers")(
+    function* (decoded: ListCustomersCommand) {
+      const search = decoded.search === undefined
+        ? undefined
+        : `%${escapeLikePattern(decoded.search)}%`
+      return yield* database.query(
+        (db) =>
+          db.select(customerSelection).from(customers).where(and(
+            eq(customers.tenantId, decoded.tenantId),
+            search === undefined
+              ? undefined
+              : or(ilike(customers.name, search), ilike(customers.email, search)),
+          )).orderBy(asc(customers.name), asc(customers.id)).limit(decoded.limit ?? 200),
+        "sales.customer.list",
+      )
+    },
+  )
+  const getCustomer = Effect.fn("SalesStore.getCustomer")(
+    function* (decoded: GetCustomerCommand) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select(customerSelection).from(customers).where(and(
+            eq(customers.tenantId, decoded.tenantId),
+            eq(customers.id, decoded.customerId),
+          )).limit(1),
+        "sales.customer.get",
+      )
+      return rows[0]
+    },
+  )
+  const listQuotations = Effect.fn("SalesStore.listQuotations")(
+    function* (decoded: ListQuotationsCommand) {
+      return yield* database.query(
+        (db) =>
+          db.select(quotationSelection).from(quotations).where(and(
+            eq(quotations.tenantId, decoded.tenantId),
+            decoded.customerId === undefined
+              ? undefined
+              : eq(quotations.customerId, decoded.customerId),
+            decoded.status === undefined ? undefined : eq(quotations.status, decoded.status),
+          )).orderBy(asc(quotations.id)).limit(decoded.limit ?? 200),
+        "sales.quotation.list",
+      )
+    },
+  )
+  const getQuotation = Effect.fn("SalesStore.getQuotation")(
+    function* (decoded: GetQuotationCommand) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select(quotationSelection).from(quotations).where(and(
+            eq(quotations.tenantId, decoded.tenantId),
+            eq(quotations.id, decoded.quotationId),
+          )).limit(1),
+        "sales.quotation.get",
+      )
+      return rows[0]
+    },
+  )
+  const listOrders = Effect.fn("SalesStore.listOrders")(
+    function* (decoded: ListOrdersCommand) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select(orderSelection).from(orders).where(and(
+            eq(orders.tenantId, decoded.tenantId),
+            decoded.customerId === undefined
+              ? undefined
+              : eq(orders.customerId, decoded.customerId),
+            decoded.status === undefined ? undefined : eq(orders.status, decoded.status),
+          )).orderBy(asc(orders.id)).limit(decoded.limit ?? 200),
+        "sales.order.list",
+      )
+      if (rows.length === 0) return []
+      const lines = yield* database.query(
+        (db) =>
+          db.select(orderLineSelection).from(orderLines).where(and(
+            eq(orderLines.tenantId, decoded.tenantId),
+            inArray(orderLines.orderId, rows.map((row) => row.id)),
+          )).orderBy(asc(orderLines.orderId), asc(orderLines.id)),
+        "sales.order.lines.list",
+      )
+      const linesByOrder = new Map<string, Array<SalesOrderLineRow>>()
+      for (const line of lines) {
+        const orderLinesForOrder = linesByOrder.get(line.orderId) ?? []
+        orderLinesForOrder.push(line)
+        linesByOrder.set(line.orderId, orderLinesForOrder)
+      }
+      return rows.map((row) => toSalesOrder(row, linesByOrder.get(row.id) ?? []))
+    },
+  )
+  const getOrder = Effect.fn("SalesStore.getOrder")(
+    function* (decoded: GetOrderCommand) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select(orderSelection).from(orders).where(and(
+            eq(orders.tenantId, decoded.tenantId),
+            eq(orders.id, decoded.orderId),
+          )).limit(1),
+        "sales.order.get",
+      )
+      const row = rows[0]
+      if (row === undefined) return undefined
+      const lines = yield* database.query(
+        (db) =>
+          db.select(orderLineSelection).from(orderLines).where(and(
+            eq(orderLines.tenantId, decoded.tenantId),
+            eq(orderLines.orderId, decoded.orderId),
+          )).orderBy(asc(orderLines.id)),
+        "sales.order.lines.get",
+      )
+      return toSalesOrder(row, lines)
+    },
+  )
   const createCustomer = Effect.fn("SalesStore.createCustomer")(
     function* (decoded: CreateCustomerCommand) {
       const email = decoded.email.trim().toLowerCase()
@@ -263,6 +392,12 @@ export const makeSalesPostgresStore = Effect.fn("Sales.makePostgresStore")(funct
     },
   )
   return {
+    listCustomers,
+    getCustomer,
+    listQuotations,
+    getQuotation,
+    listOrders,
+    getOrder,
     createCustomer,
     createQuotation,
     createOrder,

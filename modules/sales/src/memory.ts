@@ -10,6 +10,12 @@ import type {
   CreateQuotationCommand,
   Customer,
   GetConfirmedOrderTotalCommand,
+  GetCustomerCommand,
+  GetOrderCommand,
+  GetQuotationCommand,
+  ListCustomersCommand,
+  ListOrdersCommand,
+  ListQuotationsCommand,
   Quotation,
   SalesOrder,
 } from "./contract.ts"
@@ -29,6 +35,69 @@ export const makeSalesMemoryStore = (): SalesStore => {
   const orders = new Map<string, SalesOrder>()
   const keys = new Map<string, string>()
   const id = uuidv7
+  const listCustomers = Effect.fn("SalesStore.memory.listCustomers")(
+    (input: ListCustomersCommand) =>
+      Effect.sync(() => {
+        const search = input.search?.toLowerCase()
+        return Array.from(customers.values())
+          .filter((customer) => customer.tenantId === input.tenantId)
+          .filter((customer) =>
+            search === undefined || customer.name.toLowerCase().includes(search) ||
+            customer.email.includes(search)
+          )
+          .sort((left, right) =>
+            left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+          )
+          .slice(0, input.limit ?? 200)
+      }),
+  )
+  const getCustomer = Effect.fn("SalesStore.memory.getCustomer")(
+    (input: GetCustomerCommand) =>
+      Effect.sync(() => {
+        const customer = customers.get(input.customerId)
+        return customer?.tenantId === input.tenantId ? customer : undefined
+      }),
+  )
+  const listQuotations = Effect.fn("SalesStore.memory.listQuotations")(
+    (input: ListQuotationsCommand) =>
+      Effect.sync(() =>
+        Array.from(quotations.values())
+          .filter((quotation) => quotation.tenantId === input.tenantId)
+          .filter((quotation) =>
+            input.customerId === undefined || quotation.customerId === input.customerId
+          )
+          .filter((quotation) => input.status === undefined || quotation.status === input.status)
+          .sort((left, right) => left.id.localeCompare(right.id))
+          .slice(0, input.limit ?? 200)
+      ),
+  )
+  const getQuotation = Effect.fn("SalesStore.memory.getQuotation")(
+    (input: GetQuotationCommand) =>
+      Effect.sync(() => {
+        const quotation = quotations.get(input.quotationId)
+        return quotation?.tenantId === input.tenantId ? quotation : undefined
+      }),
+  )
+  const listOrders = Effect.fn("SalesStore.memory.listOrders")(
+    (input: ListOrdersCommand) =>
+      Effect.sync(() =>
+        Array.from(orders.values())
+          .filter((order) => order.tenantId === input.tenantId)
+          .filter((order) =>
+            input.customerId === undefined || order.customerId === input.customerId
+          )
+          .filter((order) => input.status === undefined || order.status === input.status)
+          .sort((left, right) => left.id.localeCompare(right.id))
+          .slice(0, input.limit ?? 200)
+      ),
+  )
+  const getOrder = Effect.fn("SalesStore.memory.getOrder")(
+    (input: GetOrderCommand) =>
+      Effect.sync(() => {
+        const order = orders.get(input.orderId)
+        return order?.tenantId === input.tenantId ? order : undefined
+      }),
+  )
   const createCustomer = Effect.fn("SalesStore.memory.createCustomer")(
     function* (input: CreateCustomerCommand) {
       const email = input.email.trim().toLowerCase()
@@ -161,6 +230,12 @@ export const makeSalesMemoryStore = (): SalesStore => {
     },
   )
   return {
+    listCustomers,
+    getCustomer,
+    listQuotations,
+    getQuotation,
+    listOrders,
+    getOrder,
     createCustomer,
     createQuotation,
     createOrder,
