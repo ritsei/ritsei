@@ -207,6 +207,16 @@ it.effect.skipIf(databaseUrl === undefined)(
           {
             userAccountId: principal.userAccountId,
             tenantId: tenant.id,
+            capability: PartyCapabilities.partyRead,
+          },
+          {
+            userAccountId: principal.userAccountId,
+            tenantId: otherTenant.id,
+            capability: PartyCapabilities.partyRead,
+          },
+          {
+            userAccountId: principal.userAccountId,
+            tenantId: tenant.id,
             capability: "party.legal_entity.create",
           },
           {
@@ -535,6 +545,35 @@ it.effect.skipIf(databaseUrl === undefined)(
           assert.strictEqual(branch.timezone, "Asia/Jakarta")
           assert.strictEqual(branch.localTaxRegistration, "TAX-JKT-001")
           assert.strictEqual(branch.dedicatedJournalCode, "JKT-OPS")
+
+          const directory = yield* party.list({
+            principal,
+            tenantId: tenant.id,
+            search: "Scope",
+            kind: "organization",
+          })
+          assert.deepStrictEqual(directory.map(({ party }) => party.id), [
+            organization.id,
+            secondOrganization.id,
+          ])
+          assert.deepStrictEqual(
+            yield* party.list({ principal, tenantId: otherTenant.id }),
+            [],
+          )
+          const detail = yield* party.getDetail({
+            principal,
+            tenantId: tenant.id,
+            partyId: organization.id,
+          })
+          assert.deepStrictEqual(detail.roles, ["customer"])
+          assert.strictEqual(detail.legalEntity?.id, legalEntity.id)
+          assert.deepStrictEqual(detail.branches, [branch])
+          assert.deepStrictEqual(detail.identifiers, [firstIdentifier])
+          assert.deepStrictEqual(
+            detail.relationships.map(({ id }) => id).sort(),
+            [relationship.id, relatedRelationship.id].sort(),
+          )
+
           assert.instanceOf(
             yield* Effect.flip(party.createBranch({
               principal,
@@ -573,6 +612,11 @@ it.effect.skipIf(databaseUrl === undefined)(
             userAccountId: principal.userAccountId,
             tenantId: tenant.id,
             capability: PartyCapabilities.partyCreate,
+          },
+          {
+            userAccountId: principal.userAccountId,
+            tenantId: tenant.id,
+            capability: PartyCapabilities.partyRead,
           },
           {
             userAccountId: principal.userAccountId,
@@ -635,6 +679,12 @@ it.effect.skipIf(databaseUrl === undefined)(
             active: false,
           })
           assert.strictEqual(inactive.active, false)
+          const detail = yield* party.getDetail({
+            principal,
+            tenantId: tenant.id,
+            partyId: representedParty.id,
+          })
+          assert.deepStrictEqual(detail.representations, [inactive])
           assert.instanceOf(
             yield* Effect.flip(party.setPartyRepresentationActive({
               principal,

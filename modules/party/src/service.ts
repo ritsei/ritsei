@@ -15,7 +15,9 @@ import {
   CreatePartyRelationshipInput,
   CreatePartyRepresentationInput,
   FindRelatedPartyPathsInput,
+  GetPartyDetailInput,
   GetPartyRelationshipInput,
+  ListPartiesInput,
   PartyService,
   SetPartyRepresentationActiveInput,
 } from "./contract.ts"
@@ -34,6 +36,29 @@ export const makePartyServiceFromStore = <R>(
     const databaseOption = yield* Effect.serviceOption(Database)
     const publisherOption = yield* Effect.serviceOption(PartyEventPublisher)
 
+    const list = Effect.fn("PartyService.list")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(ListPartiesInput)(input)
+      yield* authorization.authorize({
+        principal: decoded.principal,
+        tenantId: decoded.tenantId,
+        capability: PartyCapabilities.partyRead,
+      })
+      return yield* partyStore.list(
+        decoded.tenantId,
+        decoded.search ?? null,
+        decoded.kind ?? null,
+        decoded.limit ?? 200,
+      )
+    })
+    const getDetail = Effect.fn("PartyService.getDetail")(function* (input: unknown) {
+      const decoded = yield* Schema.decodeUnknownEffect(GetPartyDetailInput)(input)
+      yield* authorization.authorize({
+        principal: decoded.principal,
+        tenantId: decoded.tenantId,
+        capability: PartyCapabilities.partyRead,
+      })
+      return yield* partyStore.getDetail(decoded.tenantId, decoded.partyId)
+    })
     const create = Effect.fn("PartyService.create")(function* (input: unknown) {
       const decoded = yield* Schema.decodeUnknownEffect(CreatePartyInput)(input)
       yield* authorization.authorize({
@@ -197,6 +222,8 @@ export const makePartyServiceFromStore = <R>(
     })
 
     return {
+      list,
+      getDetail,
       create,
       createLegalEntity,
       createBranch,

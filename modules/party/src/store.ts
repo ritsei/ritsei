@@ -5,6 +5,8 @@ import type {
   ExternalIdentifier,
   LegalEntity,
   Party,
+  PartyDetail,
+  PartyDirectoryEntry,
   PartyKind,
   PartyRelationship,
   PartyRelationshipKind,
@@ -32,6 +34,16 @@ import type {
 type Failure = DatabaseFailure
 
 export interface PartyStore {
+  readonly list: (
+    tenantId: string,
+    search: string | null,
+    kind: PartyKind | null,
+    limit: number,
+  ) => Effect.Effect<ReadonlyArray<PartyDirectoryEntry>, Failure>
+  readonly getDetail: (
+    tenantId: string,
+    partyId: string,
+  ) => Effect.Effect<PartyDetail, PartyNotFound | Failure>
   readonly create: (
     tenantId: string,
     kind: PartyKind,

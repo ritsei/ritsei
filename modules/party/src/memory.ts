@@ -7,7 +7,10 @@ import type {
   ExternalIdentifier,
   LegalEntity,
   Party,
+  PartyDetail,
+  PartyDirectoryEntry,
   PartyRelationship,
+  PartyRepresentation,
   PartyRepresentationKind,
   PartyRole,
 } from "./contract.ts"
@@ -33,9 +36,85 @@ export const makePartyMemoryStore = (validUserAccountIds?: ReadonlySet<string>):
   const branches = new Map<string, Branch>()
   const roles = new Set<string>()
   const relationships = new Map<string, PartyRelationship>()
-  const identifiers = new Set<string>()
-  const representations = new Map<string, import("./contract.ts").PartyRepresentation>()
+  const identifiers = new Map<string, ExternalIdentifier>()
+  const representations = new Map<string, PartyRepresentation>()
   const id = uuidv7
+  const list = Effect.fn("PartyStore.memory.list")(
+    (tenantId: string, search: string | null, kind: Party["kind"] | null, limit: number) =>
+      Effect.sync(() => {
+        const normalizedSearch = search?.toLocaleLowerCase()
+        return [...stored.values()]
+          .filter((party) =>
+            party.tenantId === tenantId &&
+            (kind === null || party.kind === kind) &&
+            (normalizedSearch === undefined ||
+              party.name.toLocaleLowerCase().includes(normalizedSearch))
+          )
+          .sort((left, right) =>
+            left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+          )
+          .slice(0, limit)
+          .map((party): PartyDirectoryEntry => ({
+            party,
+            legalEntityId: [...legalEntities.values()].find((entity) =>
+              entity.tenantId === tenantId && entity.organizationId === party.id
+            )?.id ?? null,
+          }))
+      }),
+  )
+  const getDetail = Effect.fn("PartyStore.memory.getDetail")(
+    function* (tenantId: string, partyId: string) {
+      const party = stored.get(partyId)
+      if (party === undefined || party.tenantId !== tenantId) {
+        return yield* Effect.fail(new PartyNotFound({ tenantId, partyId }))
+      }
+      const legalEntity =
+        [...legalEntities.values()].find((entity) =>
+          entity.tenantId === tenantId && entity.organizationId === partyId
+        ) ?? null
+      const rolePrefix = `${tenantId}:${partyId}:`
+      return {
+        party,
+        roles: [...roles]
+          .filter((key) => key.startsWith(rolePrefix))
+          .map((key) => key.slice(rolePrefix.length) as PartyRole)
+          .sort(),
+        identifiers: [...identifiers.values()]
+          .filter((identifier) =>
+            identifier.tenantId === tenantId && identifier.partyId === partyId
+          )
+          .sort((left, right) =>
+            left.provider.localeCompare(right.provider) ||
+            left.scheme.localeCompare(right.scheme) || left.scope.localeCompare(right.scope) ||
+            left.value.localeCompare(right.value) || left.id.localeCompare(right.id)
+          ),
+        legalEntity,
+        branches: legalEntity === null ? [] : [...branches.values()]
+          .filter((branch) =>
+            branch.tenantId === tenantId && branch.legalEntityId === legalEntity.id
+          )
+          .sort((left, right) =>
+            left.name.localeCompare(right.name) || left.id.localeCompare(right.id)
+          ),
+        relationships: [...relationships.values()]
+          .filter((relationship) =>
+            relationship.tenantId === tenantId && relationship.partyId === partyId
+          )
+          .sort((left, right) =>
+            left.kind.localeCompare(right.kind) ||
+            left.legalEntityId.localeCompare(right.legalEntityId) || left.id.localeCompare(right.id)
+          ),
+        representations: [...representations.values()]
+          .filter((representation) =>
+            representation.tenantId === tenantId && representation.partyId === partyId
+          )
+          .sort((left, right) =>
+            left.kind.localeCompare(right.kind) ||
+            left.userAccountId.localeCompare(right.userAccountId) || left.id.localeCompare(right.id)
+          ),
+      } satisfies PartyDetail
+    },
+  )
   const create = Effect.fn("PartyStore.memory.create")((
     tenantId: string,
     kind: Party["kind"],
@@ -242,7 +321,6 @@ export const makePartyMemoryStore = (validUserAccountIds?: ReadonlySet<string>):
           }),
         )
       }
-      identifiers.add(key)
       const result: ExternalIdentifier = {
         id: id(),
         tenantId,
@@ -253,10 +331,13 @@ export const makePartyMemoryStore = (validUserAccountIds?: ReadonlySet<string>):
         legalEntityId,
         value,
       }
+      identifiers.set(key, result)
       return result
     },
   )
   return {
+    list,
+    getDetail,
     create,
     createLegalEntity,
     createBranch,

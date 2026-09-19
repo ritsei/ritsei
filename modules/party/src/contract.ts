@@ -22,14 +22,15 @@ import type {
 } from "./errors.ts"
 
 const NonBlankString = Schema.String.check(Schema.isPattern(/\S/))
-const TrimmedNonBlankString = Schema.String.check(Schema.makeFilter(
-  (value) => /\S/.test(value) && value === value.trim(),
-  { expected: "a trimmed nonblank string" },
-))
-const UpperTrimmedNonBlankString = Schema.String.check(Schema.makeFilter(
-  (value) => /\S/.test(value) && value === value.trim() && value === value.toUpperCase(),
-  { expected: "a trimmed uppercase nonblank string" },
-))
+const TrimmedNonBlankString = Schema.String.check(
+  Schema.isPattern(/\S/),
+  Schema.isTrimmed(),
+)
+const UpperTrimmedNonBlankString = Schema.String.check(
+  Schema.isPattern(/\S/),
+  Schema.isTrimmed(),
+  Schema.isUppercased(),
+)
 const Uuid = Schema.String.check(Schema.isUUID())
 
 export const PartyKind = Schema.Literals(["person", "organization"])
@@ -117,6 +118,38 @@ export type PartyRole = Schema.Schema.Type<typeof PartyRole>
 export type PartyKind = Schema.Schema.Type<typeof PartyKind>
 export type PartyRelationshipKind = Schema.Schema.Type<typeof PartyRelationshipKind>
 
+export const PartyDirectoryEntry = Schema.Struct({
+  party: Party,
+  legalEntityId: Schema.NullOr(Uuid),
+})
+
+export const PartyDetail = Schema.Struct({
+  party: Party,
+  roles: Schema.Array(PartyRole),
+  identifiers: Schema.Array(ExternalIdentifier),
+  legalEntity: Schema.NullOr(LegalEntity),
+  branches: Schema.Array(Branch),
+  relationships: Schema.Array(PartyRelationship),
+  representations: Schema.Array(PartyRepresentation),
+})
+
+export type PartyDirectoryEntry = Schema.Schema.Type<typeof PartyDirectoryEntry>
+export type PartyDetail = Schema.Schema.Type<typeof PartyDetail>
+
+export const ListPartiesInput = Schema.Struct({
+  principal: Principal,
+  tenantId: Uuid,
+  search: Schema.optionalKey(TrimmedNonBlankString),
+  kind: Schema.optionalKey(PartyKind),
+  limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+})
+
+export const GetPartyDetailInput = Schema.Struct({
+  principal: Principal,
+  tenantId: Uuid,
+  partyId: Uuid,
+})
+
 export const CreatePartyInput = Schema.Struct({
   principal: Principal,
   tenantId: Uuid,
@@ -195,6 +228,18 @@ export const SetPartyRepresentationActiveInput = Schema.Struct({
 })
 
 export interface PartyService {
+  readonly list: (
+    input: unknown,
+  ) => Effect.Effect<
+    ReadonlyArray<PartyDirectoryEntry>,
+    AuthorizationDenied | DatabaseFailure | Schema.SchemaError
+  >
+  readonly getDetail: (
+    input: unknown,
+  ) => Effect.Effect<
+    PartyDetail,
+    PartyNotFound | AuthorizationDenied | DatabaseFailure | Schema.SchemaError
+  >
   readonly create: (
     input: unknown,
   ) => Effect.Effect<

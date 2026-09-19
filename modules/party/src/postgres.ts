@@ -1,4 +1,4 @@
-import { and, asc, eq, ne } from "drizzle-orm"
+import { and, asc, eq, ilike, ne } from "drizzle-orm"
 import * as Effect from "effect/Effect"
 
 import {
@@ -14,6 +14,7 @@ import {
 import { Database, isDatabaseConstraint } from "../../../foundation/mod.ts"
 import type { PartyStore } from "./store.ts"
 import type {
+  PartyDetail,
   PartyKind,
   PartyRelationshipKind,
   PartyRepresentationKind,
@@ -93,6 +94,122 @@ const relatedPartyPathSelection = {
 
 export const makePartyPostgresStore = Effect.gen(function* () {
   const database = yield* Database
+  const list = Effect.fn("PartyStore.list")(
+    function* (tenantId: string, search: string | null, kind: PartyKind | null, limit: number) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select({ ...partySelection, legalEntityId: legalEntities.id }).from(parties).leftJoin(
+            legalEntities,
+            and(
+              eq(legalEntities.tenantId, parties.tenantId),
+              eq(legalEntities.organizationPartyId, parties.id),
+            ),
+          ).where(and(
+            eq(parties.tenantId, tenantId),
+            search === null ? undefined : ilike(parties.name, `%${search}%`),
+            kind === null ? undefined : eq(parties.kind, kind),
+          )).orderBy(asc(parties.name), asc(parties.id)).limit(limit),
+        "party.list",
+      )
+      return rows.map(({ legalEntityId, ...party }) => ({ party, legalEntityId }))
+    },
+  )
+  const getDetail = Effect.fn("PartyStore.getDetail")(
+    function* (tenantId: string, partyId: string) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select({
+            ...partySelection,
+            legalEntityId: legalEntities.id,
+            legalEntityTenantId: legalEntities.tenantId,
+            legalEntityOrganizationId: legalEntities.organizationPartyId,
+          }).from(parties).leftJoin(
+            legalEntities,
+            and(
+              eq(legalEntities.tenantId, parties.tenantId),
+              eq(legalEntities.organizationPartyId, parties.id),
+            ),
+          ).where(and(eq(parties.tenantId, tenantId), eq(parties.id, partyId))),
+        "party.detail.get",
+      )
+      const row = rows[0]
+      if (row === undefined) {
+        return yield* Effect.fail(new PartyNotFound({ tenantId, partyId }))
+      }
+      const {
+        legalEntityId,
+        legalEntityTenantId,
+        legalEntityOrganizationId,
+        ...party
+      } = row
+      const roles = yield* database.query(
+        (db) =>
+          db.select({ role: partyRoles.role }).from(partyRoles).where(
+            and(eq(partyRoles.tenantId, tenantId), eq(partyRoles.partyId, partyId)),
+          ).orderBy(asc(partyRoles.role)),
+        "party.detail.roles",
+      )
+      const identifiers = yield* database.query(
+        (db) =>
+          db.select(identifierSelection).from(partyIdentifiers).where(
+            and(eq(partyIdentifiers.tenantId, tenantId), eq(partyIdentifiers.partyId, partyId)),
+          ).orderBy(
+            asc(partyIdentifiers.provider),
+            asc(partyIdentifiers.scheme),
+            asc(partyIdentifiers.scope),
+            asc(partyIdentifiers.value),
+            asc(partyIdentifiers.id),
+          ),
+        "party.detail.identifiers",
+      )
+      const legalEntity = legalEntityId === null ? null : {
+        id: legalEntityId,
+        tenantId: legalEntityTenantId!,
+        organizationId: legalEntityOrganizationId!,
+      }
+      const partyBranches = legalEntity === null ? [] : yield* database.query(
+        (db) =>
+          db.select(branchSelection).from(branches).where(
+            and(eq(branches.tenantId, tenantId), eq(branches.legalEntityId, legalEntity.id)),
+          ).orderBy(asc(branches.name), asc(branches.id)),
+        "party.detail.branches",
+      )
+      const relationships = yield* database.query(
+        (db) =>
+          db.select(relationshipSelection).from(partyRelationships).where(
+            and(eq(partyRelationships.tenantId, tenantId), eq(partyRelationships.partyId, partyId)),
+          ).orderBy(
+            asc(partyRelationships.kind),
+            asc(partyRelationships.legalEntityId),
+            asc(partyRelationships.id),
+          ),
+        "party.detail.relationships",
+      )
+      const representations = yield* database.query(
+        (db) =>
+          db.select(partyRepresentationSelection).from(partyRepresentations).where(
+            and(
+              eq(partyRepresentations.tenantId, tenantId),
+              eq(partyRepresentations.partyId, partyId),
+            ),
+          ).orderBy(
+            asc(partyRepresentations.kind),
+            asc(partyRepresentations.userAccountId),
+            asc(partyRepresentations.id),
+          ),
+        "party.detail.representations",
+      )
+      return {
+        party,
+        roles: roles.map(({ role }) => role),
+        identifiers,
+        legalEntity,
+        branches: partyBranches,
+        relationships,
+        representations,
+      } satisfies PartyDetail
+    },
+  )
   const create = Effect.fn("PartyStore.create")(
     function* (tenantId: string, kind: PartyKind, name: string) {
       const rows = yield* database.query(
@@ -371,6 +488,8 @@ export const makePartyPostgresStore = Effect.gen(function* () {
     },
   )
   return {
+    list,
+    getDetail,
     create,
     createLegalEntity,
     createBranch,

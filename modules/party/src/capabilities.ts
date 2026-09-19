@@ -1,4 +1,5 @@
 export const PartyCapabilities = {
+  partyRead: "party.read",
   partyCreate: "party.create",
   legalEntityCreate: "party.legal_entity.create",
   branchCreate: "party.branch.create",
