@@ -52,18 +52,27 @@ const makeProcurementStub = (
   observedToken: { value?: string },
 ): ProcurementServiceContract => ({
   createSupplierAccount: unused,
+  listSupplierAccounts: () => Effect.succeed([]),
   createPurchaseOrder: () => Effect.succeed(order),
   getPurchaseOrder: () =>
     Effect.gen(function* () {
       observedToken.value = yield* CurrentConsistencyToken
       return order
     }),
+  listPurchaseOrders: () => Effect.succeed([order]),
+  listPurchaseReceipts: () => Effect.succeed([]),
   confirmPurchaseOrder: unused,
   cancelPurchaseOrder: unused,
   receivePurchaseOrder: unused,
 })
 
 const inventoryService: InventoryServiceContract = {
+  listWarehouses: unused,
+  listItems: unused,
+  listStockBalances: unused,
+  listStockReservations: unused,
+  listStockTransfers: unused,
+  listStockMovements: unused,
   createWarehouse: unused,
   createItem: unused,
   receiveStock: unused,
@@ -128,6 +137,28 @@ it.layer(TestHttpServices)("procurement API consistency headers", (it) => {
       assert.strictEqual(createResponse.status, 201)
       assert.strictEqual(createResponse.headers["x-ritsei-consistency-token"], consistencyToken)
       assert.strictEqual(capturedTenantId, tenantId)
+      assert.deepStrictEqual(
+        yield* client.Procurement.listSupplierAccounts({
+          headers: { "x-tenant-id": tenantId },
+          query: { limit: 1 },
+        }),
+        [],
+      )
+      assert.deepStrictEqual(
+        yield* client.Procurement.listPurchaseOrders({
+          headers: { "x-tenant-id": tenantId },
+          query: { supplierAccountId, status: "draft", limit: 1 },
+        }),
+        [order],
+      )
+      assert.deepStrictEqual(
+        yield* client.Procurement.listPurchaseReceipts({
+          params: { id: orderId },
+          headers: { "x-tenant-id": tenantId },
+          query: { limit: 1 },
+        }),
+        [],
+      )
 
       const read = yield* client.Procurement.getPurchaseOrder({
         params: { id: orderId },

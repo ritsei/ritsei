@@ -24,9 +24,11 @@ import {
   makeProcessJobEnqueuer,
   makeProcessService,
   ProcessService,
+  ProcessStudioLive,
 } from "../modules/process/mod.ts"
 import type { FinancialVerificationSignerService } from "../modules/accounting/mod.ts"
 import { IdentityAccountAuthorizerLive } from "./adapters/identity-account-authorizer.ts"
+import { makeIdentityProviderLayer } from "./authentication/oidc.ts"
 import {
   makeFinancialLedgerLayer,
   makeFinancialStoreObservationLayer,
@@ -68,7 +70,9 @@ export const serviceLayers = (
   )
 
   const AuthLive = Layer.effect(AuthService, makeAuthService).pipe(
-    Layer.provide(Layer.mergeAll(PlatformLive, IdentityLive)),
+    Layer.provide(
+      Layer.mergeAll(PlatformLive, IdentityLive, makeIdentityProviderLayer(configuration)),
+    ),
   )
 
   const PartyLive = Layer.effect(PartyService, makePartyService).pipe(
@@ -128,6 +132,10 @@ export const serviceLayers = (
     ),
   )
 
+  const ProcessStudio = ProcessStudioLive.pipe(
+    Layer.provide(Layer.merge(DatabaseLive, AuthorizationLive)),
+  )
+
   const ProcurementLiveWithRequirements = ProcurementLive.pipe(
     Layer.provide(
       Layer.mergeAll(BusinessRequirements, PartyLive, InventoryLive, MessagingLive),
@@ -146,6 +154,7 @@ export const serviceLayers = (
     ProcessJobEnqueuerLive,
     MessagingLive,
     ProcessLive,
+    ProcessStudio,
     ProcurementLiveWithRequirements,
   )
 

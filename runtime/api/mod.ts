@@ -12,6 +12,7 @@ import type { PostgresClient } from "../../foundation/mod.ts"
 import { validatePostgresVersion } from "../../platform/mod.ts"
 import { RitseiApi } from "./api.ts"
 import { ApiHandlers, BearerAuthLive } from "./handlers.ts"
+import { CurrentRuntimeConfiguration } from "./api.ts"
 import { requestBodyLimitLayer } from "./request-limits.ts"
 import { serviceLayers } from "../layers.ts"
 import { readRuntimeConfiguration, type RitseiRuntimeConfiguration } from "../config.ts"
@@ -30,6 +31,7 @@ export const makeApiLayer = (
   const services = serviceLayers(client, configuration, undefined, replicaClient)
   const authMiddleware = BearerAuthLive.pipe(Layer.provide(services))
   const handlers = ApiHandlers.pipe(
+    Layer.provide(Layer.succeed(CurrentRuntimeConfiguration)(configuration)),
     Layer.provide(authMiddleware),
     Layer.provide(services),
   )

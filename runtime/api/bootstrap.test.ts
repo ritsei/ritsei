@@ -13,6 +13,7 @@ import {
   ExternalIdentifierAlreadyAssigned,
   LegalEntityNotFound,
   makePartyTestLayer,
+  PartyCapabilities,
   PartyService,
 } from "../../modules/party/mod.ts"
 import {
@@ -72,6 +73,7 @@ const withBootstrap = <A, E>(
 
 it.effect("bootstraps the tenant scope vertical slice", () =>
   withBootstrap(Effect.gen(function* () {
+    const authorization = yield* AuthorizationService
     const result = yield* bootstrapTenant(input)
 
     assert.strictEqual(result.tenant.slug, "acme")
@@ -85,6 +87,13 @@ it.effect("bootstraps the tenant scope vertical slice", () =>
     assert.strictEqual(result.accountingConfiguration.baseCurrency, "USD")
     assert.strictEqual(result.warehouse.legalEntityId, result.legalEntity.id)
     assert.strictEqual(result.warehouse.primaryBranchId, result.branch.id)
+    assert.isTrue(
+      (yield* authorization.authorize({
+        principal,
+        tenantId: result.tenant.id,
+        capability: PartyCapabilities.partyRead,
+      })).allowed,
+    )
 
     assert.instanceOf(
       yield* Effect.flip(bootstrapTenant(input)),

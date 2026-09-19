@@ -10,22 +10,42 @@ import * as OpenApi from "effect/unstable/httpapi/OpenApi"
 
 import { Principal } from "../../modules/auth/mod.ts"
 import { ConsistencyToken, FinancialMajorAmount } from "../../foundation/mod.ts"
+import type { RitseiRuntimeConfiguration } from "../config.ts"
 import {
   FINANCIAL_STAGING_EVIDENCE_CANONICALIZATION_VERSION,
   FinancialStagingEvidence,
 } from "../../modules/accounting/mod.ts"
-import { Capability } from "../../modules/authorization/mod.ts"
+import {
+  Capability,
+  CapabilityCatalog,
+  DirectCapabilityGrant,
+  TenantMembership,
+  TenantMembershipStatus,
+} from "../../modules/authorization/mod.ts"
 import { UserAccount } from "../../modules/identity/mod.ts"
 import {
+  Branch,
   ExternalIdentifier,
+  LegalEntity,
   Party,
+  PartyDetail,
+  PartyDirectoryEntry,
   PartyKind,
   PartyRelationship,
   PartyRelationshipKind,
+  PartyRepresentation,
+  PartyRepresentationKind,
   PartyRole,
   RelatedPartyPath,
 } from "../../modules/party/mod.ts"
-import { Customer, Quotation, SalesOrder, SalesOrderLine } from "../../modules/sales/mod.ts"
+import {
+  Customer,
+  Quotation,
+  QuotationStatus,
+  SalesOrder,
+  SalesOrderLine,
+  SalesOrderStatus,
+} from "../../modules/sales/mod.ts"
 import {
   OrderCancellationPayload,
   OrderCancellationResult,
@@ -33,26 +53,42 @@ import {
   OrderConfirmationResult,
   OrderFulfillmentPayload,
   OrderFulfillmentResult,
+  ProcessCatalogCapabilityKind,
+  ProcessCatalogDescriptor,
+  ProcessJobInboxItem,
+  ProcessOperatorAction,
+  ProcessOperatorControl,
+  ProcessRuntimeInstance,
+  ProcessStaticValidation,
+  ProcessWorkflowRun,
+  ResolveProcessCatalogInput,
   WorkflowRun,
 } from "../../modules/process/mod.ts"
 import {
   Item,
   StockBalance,
+  StockCorrection,
+  StockMovement,
+  StockMovementKind,
   StockReservation,
+  StockReservationStatus,
   StockTransfer,
   StockTransferLine,
+  StockTransferStatus,
   Warehouse,
 } from "../../modules/inventory/mod.ts"
 import {
   GoodsReceipt,
   PurchaseOrder,
   PurchaseOrderLine,
+  PurchaseOrderStatus,
   PurchaseReceiptLineInput,
   SupplierAccount,
 } from "../../modules/procurement/mod.ts"
 import {
   Account,
   AccountingConfiguration,
+  AccountingPeriod,
   FinancialCutoverControl,
   FinancialOperation,
   FinancialProjectionRebuildResult,
@@ -62,12 +98,17 @@ import {
   FinancialVerificationEvidence,
   JournalEntry,
   JournalLine,
+  RevenuePostingProfile,
 } from "../../modules/accounting/mod.ts"
-import { TenantMembership } from "../../modules/authorization/mod.ts"
 
 export class CurrentPrincipal extends Context.Service<CurrentPrincipal, Principal>()(
   "RITSEI/Http/CurrentPrincipal",
 ) {}
+
+export class CurrentRuntimeConfiguration
+  extends Context.Service<CurrentRuntimeConfiguration, RitseiRuntimeConfiguration>()(
+    "RITSEI/Http/CurrentRuntimeConfiguration",
+  ) {}
 
 export class ApiUnauthorized extends Schema.TaggedError<ApiUnauthorized>()("ApiUnauthorized", {
   code: Schema.Literal("unauthorized"),
@@ -106,6 +147,8 @@ const ShortString = Schema.String.check(
   Schema.isPattern(/\S/),
   Schema.isMaxLength(MaxApiIdentifierLength),
 )
+const BoundedAuthArray = <S extends Schema.Constraint>(schema: S) =>
+  Schema.Array(schema).check(Schema.isMaxLength(32))
 const Email = Schema.String.check(
   Schema.isPattern(/^[^\s@]+@[^\s@]+$/),
   Schema.isMaxLength(320),
@@ -118,6 +161,7 @@ const FiscalYearStartMonth = Schema.Int.check(Schema.isBetween({ minimum: 1, max
 const BoundedArray = <S extends Schema.Constraint>(schema: S) =>
   Schema.Array(schema).check(Schema.isMaxLength(MaxApiCollectionItems))
 const tenantHeaders = { "x-tenant-id": Uuid }
+const authSessionHeaders = { "x-tenant-id": Schema.optionalKey(Uuid) }
 const consistencyHeaders = {
   ...tenantHeaders,
   "x-ritsei-consistency-token": Schema.optionalKey(ConsistencyToken),
@@ -131,7 +175,10 @@ const CreatedGoodsReceipt = GoodsReceipt.pipe(HttpApiSchema.status(201))
 const CreatedUserAccount = UserAccount.pipe(HttpApiSchema.status(201))
 const CreatedParty = Party.pipe(HttpApiSchema.status(201))
 const CreatedExternalIdentifier = ExternalIdentifier.pipe(HttpApiSchema.status(201))
+const CreatedLegalEntity = LegalEntity.pipe(HttpApiSchema.status(201))
+const CreatedBranch = Branch.pipe(HttpApiSchema.status(201))
 const CreatedPartyRelationship = PartyRelationship.pipe(HttpApiSchema.status(201))
+const CreatedPartyRepresentation = PartyRepresentation.pipe(HttpApiSchema.status(201))
 const CreatedCustomer = Customer.pipe(HttpApiSchema.status(201))
 const CreatedQuotation = Quotation.pipe(HttpApiSchema.status(201))
 const CreatedOrder = SalesOrder.pipe(HttpApiSchema.status(201))
@@ -141,6 +188,8 @@ const CreatedReservation = StockReservation.pipe(HttpApiSchema.status(201))
 const CreatedTransfer = StockTransfer.pipe(HttpApiSchema.status(201))
 const CreatedAccountingConfiguration = AccountingConfiguration.pipe(HttpApiSchema.status(201))
 const CreatedAccount = Account.pipe(HttpApiSchema.status(201))
+const CreatedAccountingPeriod = AccountingPeriod.pipe(HttpApiSchema.status(201))
+const CreatedRevenuePostingProfile = RevenuePostingProfile.pipe(HttpApiSchema.status(201))
 const CreatedJournal = JournalEntry.pipe(HttpApiSchema.status(201))
 const CreatedFinancialOperation = FinancialOperation.pipe(HttpApiSchema.status(201))
 const CreatedFinancialVerificationArtifact = FinancialVerificationArtifact.pipe(
@@ -170,9 +219,63 @@ const FinancialStagingEvidenceLookupQuery = Schema.Struct({
   { expected: "staging evidence lookup requires gate, cohort, or deployment scope" },
 ))
 const CreatedTenantMembership = TenantMembership.pipe(HttpApiSchema.status(201))
+export const AuthProfile = Schema.Literals(["transitional-local", "oidc"])
+const LocalAuthConfiguration = Schema.Struct({
+  profile: Schema.Literal("transitional-local"),
+  scopes: BoundedAuthArray(ShortString),
+})
+const OidcAuthConfiguration = Schema.Struct({
+  profile: Schema.Literal("oidc"),
+  issuerUrl: NonEmptyString,
+  clientId: NonEmptyString,
+  authorizationEndpoint: NonEmptyString,
+  tokenEndpoint: NonEmptyString,
+  redirectUri: NonEmptyString,
+  scopes: BoundedAuthArray(ShortString),
+})
+export const AuthConfiguration = Schema.Union([LocalAuthConfiguration, OidcAuthConfiguration])
+const AuthToken = Schema.String.check(Schema.isPattern(/\S/), Schema.isMaxLength(4_096))
+export const AuthLoginResult = Schema.Struct({
+  token: AuthToken,
+  expiresAt: NonEmptyString,
+})
+export const AuthSession = Schema.Struct({
+  user: UserAccount,
+  memberships: BoundedArray(TenantMembership),
+  activeTenant: Schema.NullOr(TenantMembership),
+  capabilities: BoundedArray(Capability),
+})
 const CreatedOrderConfirmation = OrderConfirmationResult.pipe(HttpApiSchema.status(201))
 const CreatedOrderCancellation = OrderCancellationResult.pipe(HttpApiSchema.status(201))
 const CreatedOrderFulfillment = OrderFulfillmentResult.pipe(HttpApiSchema.status(201))
+const AccountingReadLimit = Schema.optionalKey(Schema.NumberFromString.pipe(
+  Schema.check(Schema.isInt()),
+  Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+))
+const ProcessReadLimit = AccountingReadLimit
+const ProcessInboxResponse = Schema.Struct({
+  runtimeInstances: BoundedArray(ProcessRuntimeInstance),
+  jobs: BoundedArray(ProcessJobInboxItem),
+})
+
+const Authentication = HttpApiGroup.make("Authentication").add(
+  HttpApiEndpoint.get("config", "/auth/config", {
+    success: AuthConfiguration,
+    error: [ApiServiceUnavailable],
+  }),
+  HttpApiEndpoint.post("devLogin", "/auth/dev/login", {
+    success: AuthLoginResult,
+    error: [ApiForbidden, ApiServiceUnavailable],
+  }),
+  HttpApiEndpoint.get("session", "/auth/session", {
+    headers: authSessionHeaders,
+    success: AuthSession,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("logout", "/auth/logout", {
+    error: errors,
+  }).middleware(BearerAuth),
+)
 
 const Health = HttpApiGroup.make("Health").add(
   HttpApiEndpoint.get("health", "/health", {
@@ -208,10 +311,47 @@ const UserAccounts = HttpApiGroup.make("UserAccounts").add(
 )
 
 const Parties = HttpApiGroup.make("Parties").add(
+  HttpApiEndpoint.get("list", "/parties", {
+    headers: tenantHeaders,
+    query: {
+      search: Schema.optionalKey(ShortString),
+      kind: Schema.optionalKey(PartyKind),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(PartyDirectoryEntry),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("get", "/parties/:id", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: PartyDetail,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("create", "/parties", {
     headers: tenantHeaders,
     payload: Schema.Struct({ kind: PartyKind, name: ShortString }),
     success: CreatedParty,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("createLegalEntity", "/parties/:id/legal-entity", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: CreatedLegalEntity,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("createBranch", "/legal-entities/:id/branches", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      name: ShortString,
+      timezone: Schema.optionalKey(ShortString),
+      localTaxRegistration: Schema.optionalKey(ShortString),
+      dedicatedJournalCode: Schema.optionalKey(ShortString),
+    }),
+    success: CreatedBranch,
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("assignRole", "/parties/:id/roles", {
@@ -243,6 +383,23 @@ const Parties = HttpApiGroup.make("Parties").add(
     success: CreatedPartyRelationship,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.post("createRepresentation", "/parties/:id/representations", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      userAccountId: Uuid,
+      kind: PartyRepresentationKind,
+    }),
+    success: CreatedPartyRepresentation,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.patch("setRepresentationActive", "/party-representations/:id", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({ active: Schema.Boolean }),
+    success: PartyRepresentation,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.get("findRelatedPartyPaths", "/parties/:id/related-paths", {
     params: { id: Uuid },
     headers: tenantHeaders,
@@ -266,7 +423,35 @@ const Authorization = HttpApiGroup.make("Authorization").add(
   }).middleware(BearerAuth),
   HttpApiEndpoint.get("listMembers", "/tenant-memberships", {
     headers: tenantHeaders,
+    query: {
+      search: Schema.optionalKey(Schema.Trim.pipe(
+        Schema.check(Schema.isPattern(/\S/)),
+        Schema.check(Schema.isMaxLength(256)),
+      )),
+      status: Schema.optionalKey(TenantMembershipStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
     success: Schema.Array(TenantMembership),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("getMember", "/tenant-memberships/:userAccountId", {
+    params: { userAccountId: Uuid },
+    headers: tenantHeaders,
+    success: TenantMembership,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listDirectGrants", "/tenant-memberships/:userAccountId/capabilities", {
+    params: { userAccountId: Uuid },
+    headers: tenantHeaders,
+    success: Schema.Array(DirectCapabilityGrant),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listCapabilityDefinitions", "/capability-definitions", {
+    headers: tenantHeaders,
+    success: CapabilityCatalog,
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("suspendMember", "/tenant-memberships/:userAccountId/suspend", {
@@ -294,16 +479,72 @@ const Authorization = HttpApiGroup.make("Authorization").add(
 )
 
 const Sales = HttpApiGroup.make("Sales").add(
+  HttpApiEndpoint.get("listCustomers", "/sales/customers", {
+    headers: tenantHeaders,
+    query: {
+      search: Schema.optionalKey(ShortString),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(Customer),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("getCustomer", "/sales/customers/:id", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: Customer,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("createCustomer", "/sales/customers", {
     headers: tenantHeaders,
     payload: Schema.Struct({ name: ShortString, email: Email }),
     success: CreatedCustomer,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listQuotations", "/sales/quotations", {
+    headers: tenantHeaders,
+    query: {
+      customerId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(QuotationStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(Quotation),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("getQuotation", "/sales/quotations/:id", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: Quotation,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("createQuotation", "/sales/quotations", {
     headers: tenantHeaders,
     payload: Schema.Struct({ customerId: Uuid, total: FinancialMajorAmount }),
     success: CreatedQuotation,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listOrders", "/sales/orders", {
+    headers: tenantHeaders,
+    query: {
+      customerId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(SalesOrderStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(SalesOrder),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("getOrder", "/sales/orders/:id", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: SalesOrder,
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("createOrder", "/sales/orders", {
@@ -316,9 +557,105 @@ const Sales = HttpApiGroup.make("Sales").add(
     success: CreatedOrder,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.post("confirmOrder", "/sales/orders/:id/confirm", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      commandId: ShortString,
+      correlationId: ShortString,
+      causationId: Schema.optionalKey(Schema.NullOr(ShortString)),
+      idempotencyKey: ShortString,
+    }),
+    success: SalesOrder,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("cancelOrder", "/sales/orders/:id/cancel", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: SalesOrder,
+    error: errors,
+  }).middleware(BearerAuth),
 )
 
 const Inventory = HttpApiGroup.make("Inventory").add(
+  HttpApiEndpoint.get("listWarehouses", "/inventory/warehouses", {
+    headers: tenantHeaders,
+    query: {
+      legalEntityId: Schema.optionalKey(Uuid),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(Warehouse),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listItems", "/inventory/items", {
+    headers: tenantHeaders,
+    query: {
+      search: Schema.optionalKey(ShortString),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(Item),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listStockBalances", "/inventory/stock-balances", {
+    headers: tenantHeaders,
+    query: {
+      warehouseId: Schema.optionalKey(Uuid),
+      itemId: Schema.optionalKey(Uuid),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(StockBalance),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listStockReservations", "/inventory/reservations", {
+    headers: tenantHeaders,
+    query: {
+      warehouseId: Schema.optionalKey(Uuid),
+      itemId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(StockReservationStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(StockReservation),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listStockTransfers", "/inventory/transfers", {
+    headers: tenantHeaders,
+    query: {
+      warehouseId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(StockTransferStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(StockTransfer),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listStockMovements", "/inventory/movements", {
+    headers: tenantHeaders,
+    query: {
+      warehouseId: Schema.optionalKey(Uuid),
+      itemId: Schema.optionalKey(Uuid),
+      kind: Schema.optionalKey(StockMovementKind),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(StockMovement),
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("createWarehouse", "/inventory/warehouses", {
     headers: tenantHeaders,
     payload: Schema.Struct({
@@ -339,12 +676,30 @@ const Inventory = HttpApiGroup.make("Inventory").add(
     success: CreatedItem,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.post("adjustStock", "/inventory/adjustments", {
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      warehouseId: Uuid,
+      itemId: Uuid,
+      adjustment: NonEmptyString,
+      unitOfMeasure: ShortString,
+      reason: ShortString,
+      commandId: ShortString,
+      correlationId: ShortString,
+      causationId: Schema.optionalKey(Schema.NullOr(ShortString)),
+      idempotencyKey: ShortString,
+    }),
+    success: StockCorrection,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("receiveStock", "/inventory/receipts", {
     headers: tenantHeaders,
     payload: Schema.Struct({
       warehouseId: Uuid,
       itemId: Uuid,
       quantity: NonEmptyString,
+      legalEntityId: Schema.optionalKey(Uuid),
+      referenceId: Schema.optionalKey(Uuid),
     }),
     success: StockBalance,
     error: errors,
@@ -355,8 +710,22 @@ const Inventory = HttpApiGroup.make("Inventory").add(
       warehouseId: Uuid,
       itemId: Uuid,
       quantity: NonEmptyString,
+      legalEntityId: Schema.optionalKey(Uuid),
+      idempotencyKey: Schema.optionalKey(ShortString),
     }),
     success: CreatedReservation,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("releaseReservation", "/inventory/reservations/:id/release", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: StockReservation,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("fulfillReservation", "/inventory/reservations/:id/fulfill", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    success: StockReservation,
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("createTransfer", "/inventory/transfers", {
@@ -384,10 +753,34 @@ const Inventory = HttpApiGroup.make("Inventory").add(
 )
 
 const Procurement = HttpApiGroup.make("Procurement").add(
+  HttpApiEndpoint.get("listSupplierAccounts", "/procurement/supplier-accounts", {
+    headers: tenantHeaders,
+    query: {
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(SupplierAccount),
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("createSupplierAccount", "/procurement/supplier-accounts", {
     headers: tenantHeaders,
     payload: Schema.Struct({ supplierRelationshipId: Uuid }),
     success: CreatedSupplierAccount,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listPurchaseOrders", "/procurement/purchase-orders", {
+    headers: tenantHeaders,
+    query: {
+      supplierAccountId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(PurchaseOrderStatus),
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(PurchaseOrder),
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("createPurchaseOrder", "/procurement/purchase-orders", {
@@ -416,6 +809,18 @@ const Procurement = HttpApiGroup.make("Procurement").add(
     params: { id: Uuid },
     headers: tenantHeaders,
     success: PurchaseOrder,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listPurchaseReceipts", "/procurement/purchase-orders/:id/receipts", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    query: {
+      limit: Schema.optionalKey(Schema.NumberFromString.pipe(
+        Schema.check(Schema.isInt()),
+        Schema.check(Schema.isBetween({ minimum: 1, maximum: 200 })),
+      )),
+    },
+    success: Schema.Array(GoodsReceipt),
     error: errors,
   }).middleware(BearerAuth),
   HttpApiEndpoint.post("receivePurchaseOrder", "/procurement/purchase-orders/:id/receipts", {
@@ -462,9 +867,118 @@ const Process = HttpApiGroup.make("Process").add(
     success: WorkflowRun,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listCatalog", "/process/catalog", {
+    headers: tenantHeaders,
+    query: {
+      kind: Schema.optionalKey(ProcessCatalogCapabilityKind),
+      limit: ProcessReadLimit,
+    },
+    success: BoundedArray(ProcessCatalogDescriptor),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("validateDefinition", "/process/definitions/validate", {
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      definitionId: Uuid,
+      definitionVersion: PositiveInt,
+      catalogVersion: PositiveInt,
+      references: BoundedArray(ResolveProcessCatalogInput),
+    }),
+    success: ProcessStaticValidation,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listRuntimeInstances", "/process/runtime", {
+    headers: tenantHeaders,
+    query: {
+      status: Schema.optionalKey(ProcessRuntimeInstance.fields.status),
+      environment: Schema.optionalKey(Schema.Literals(["DEV", "TEST", "PROD"])),
+      limit: ProcessReadLimit,
+    },
+    success: BoundedArray(ProcessRuntimeInstance),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listWorkflowRuns", "/process/workflow-runs", {
+    headers: tenantHeaders,
+    query: {
+      workflowType: Schema.optionalKey(ProcessWorkflowRun.fields.workflowType),
+      status: Schema.optionalKey(ProcessWorkflowRun.fields.status),
+      limit: ProcessReadLimit,
+    },
+    success: BoundedArray(ProcessWorkflowRun),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listOperatorInbox", "/process/inbox", {
+    headers: tenantHeaders,
+    query: { limit: ProcessReadLimit },
+    success: ProcessInboxResponse,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listOperatorControls", "/process/operator-controls", {
+    headers: tenantHeaders,
+    query: { instanceId: Schema.optionalKey(Uuid), limit: ProcessReadLimit },
+    success: BoundedArray(ProcessOperatorControl),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("operateRuntime", "/process/runtime/:id/operator-controls", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      action: ProcessOperatorAction,
+      idempotencyKey: ShortString,
+      reason: NonEmptyString,
+    }),
+    success: ProcessRuntimeInstance,
+    error: errors,
+  }).middleware(BearerAuth),
 )
 
 const Accounting = HttpApiGroup.make("Accounting").add(
+  HttpApiEndpoint.get("listConfigurations", "/accounting/configurations", {
+    headers: tenantHeaders,
+    query: {
+      legalEntityId: Schema.optionalKey(Uuid),
+      limit: AccountingReadLimit,
+    },
+    success: BoundedArray(AccountingConfiguration),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listAccounts", "/accounting/accounts", {
+    headers: tenantHeaders,
+    query: {
+      type: Schema.optionalKey(Account.fields.type),
+      limit: AccountingReadLimit,
+    },
+    success: BoundedArray(Account),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listPeriods", "/accounting/periods", {
+    headers: tenantHeaders,
+    query: {
+      legalEntityId: Schema.optionalKey(Uuid),
+      status: Schema.optionalKey(AccountingPeriod.fields.status),
+      limit: AccountingReadLimit,
+    },
+    success: BoundedArray(AccountingPeriod),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listRevenuePostingProfiles", "/accounting/revenue-posting-profiles", {
+    headers: tenantHeaders,
+    query: {
+      legalEntityId: Schema.optionalKey(Uuid),
+      limit: AccountingReadLimit,
+    },
+    success: BoundedArray(RevenuePostingProfile),
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.get("listJournals", "/accounting/journals", {
+    headers: tenantHeaders,
+    query: {
+      status: Schema.optionalKey(Schema.Literals(["posted", "reversed"])),
+      limit: AccountingReadLimit,
+    },
+    success: BoundedArray(JournalEntry),
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post(
     "prepareTigerBeetleCutover",
     "/accounting/legal-entities/:id/tigerbeetle/prepare",
@@ -558,6 +1072,33 @@ const Accounting = HttpApiGroup.make("Accounting").add(
     success: CreatedJournal,
     error: errors,
   }).middleware(BearerAuth),
+  HttpApiEndpoint.post("configureRevenuePosting", "/accounting/revenue-posting-profiles", {
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      legalEntityId: Uuid,
+      receivableAccountId: Uuid,
+      revenueAccountId: Uuid,
+    }),
+    success: CreatedRevenuePostingProfile,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("openPeriod", "/accounting/periods", {
+    headers: tenantHeaders,
+    payload: Schema.Struct({
+      legalEntityId: Uuid,
+      startsOn: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/)),
+      endsOn: Schema.String.check(Schema.isPattern(/^\d{4}-\d{2}-\d{2}$/)),
+    }),
+    success: CreatedAccountingPeriod,
+    error: errors,
+  }).middleware(BearerAuth),
+  HttpApiEndpoint.post("closePeriod", "/accounting/periods/:id/close", {
+    params: { id: Uuid },
+    headers: tenantHeaders,
+    payload: Schema.Struct({ legalEntityId: Uuid }),
+    success: AccountingPeriod,
+    error: errors,
+  }).middleware(BearerAuth),
   HttpApiEndpoint.post("rebuildFinancialProjections", "/accounting/financial-projections/rebuild", {
     headers: tenantHeaders,
     payload: Schema.Struct({ legalEntityId: Uuid }),
@@ -627,6 +1168,7 @@ const Accounting = HttpApiGroup.make("Accounting").add(
 
 export const RitseiApi = HttpApi.make("RITSEI")
   .add(
+    Authentication,
     Health,
     UserAccounts,
     Parties,

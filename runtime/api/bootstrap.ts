@@ -61,7 +61,7 @@ export const BootstrapTenantResult = Schema.Struct({
 export type BootstrapTenantInput = Schema.Schema.Type<typeof BootstrapTenantInput>
 export type BootstrapTenantResult = Schema.Schema.Type<typeof BootstrapTenantResult>
 
-const bootstrapCapabilities = [
+export const bootstrapCapabilities = [
   AuthorizationCapabilities.capabilityGrant,
   IdentityCapabilities.userAccountCreate,
   IdentityCapabilities.userAccountRead,
@@ -71,6 +71,7 @@ const bootstrapCapabilities = [
   AuthorizationCapabilities.tenantMembershipSuspend,
   AuthorizationCapabilities.tenantMembershipActivate,
   AuthorizationCapabilities.tenantMembershipRemove,
+  PartyCapabilities.partyRead,
   PartyCapabilities.partyCreate,
   PartyCapabilities.legalEntityCreate,
   PartyCapabilities.branchCreate,

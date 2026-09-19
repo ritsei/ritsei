@@ -4,9 +4,21 @@ import * as Redacted from "effect/Redacted"
 import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder"
 import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema"
 
-import { AuthService } from "../../modules/auth/mod.ts"
-import { AuthorizationCapabilities, AuthorizationService } from "../../modules/authorization/mod.ts"
-import { IdentityCapabilities, UserAccountService } from "../../modules/identity/mod.ts"
+import {
+  AuthService,
+  ExternalProviderUnavailable,
+  InvalidSessionToken,
+} from "../../modules/auth/mod.ts"
+import {
+  AuthorizationCapabilities,
+  AuthorizationService,
+  CapabilityDefinitions,
+} from "../../modules/authorization/mod.ts"
+import {
+  IdentityCapabilities,
+  UserAccountNotFound,
+  UserAccountService,
+} from "../../modules/identity/mod.ts"
 import {
   CurrentConsistencyToken,
   DatabaseFailure,
@@ -17,7 +29,7 @@ import { PartyService } from "../../modules/party/mod.ts"
 import { SalesService } from "../../modules/sales/mod.ts"
 import { InventoryService } from "../../modules/inventory/mod.ts"
 import { AccountingService, FinancialOperationService } from "../../modules/accounting/mod.ts"
-import { ProcessService } from "../../modules/process/mod.ts"
+import { ProcessService, ProcessStudioService } from "../../modules/process/mod.ts"
 import { ProcurementService } from "../../modules/procurement/mod.ts"
 import {
   ApiConflict,
@@ -27,6 +39,7 @@ import {
   ApiUnauthorized,
   BearerAuth,
   CurrentPrincipal,
+  CurrentRuntimeConfiguration,
   RitseiApi,
 } from "./api.ts"
 
@@ -97,6 +110,13 @@ const coreApiErrorPolicy = {
   LegalEntityNotFound: "not_found",
   OrderConfirmationCorrupt: "conflict",
   OrderConfirmationNotFound: "not_found",
+  ProcessCheckpointInvalid: "service_unavailable",
+  ProcessCheckpointRevisionConflict: "conflict",
+  ProcessOperatorActionUnavailable: "conflict",
+  ProcessOperatorConflict: "conflict",
+  ProcessRuntimeInstanceNotFound: "not_found",
+  ProcessReleaseValidationFailed: "conflict",
+  ProcessStudioRecordCorrupt: "service_unavailable",
   OrganizationRequired: "conflict",
   PartyNotFound: "not_found",
   PartyRelationshipAlreadyExists: "conflict",
@@ -195,6 +215,118 @@ export const toCoreApiError = (error: CoreApiFailure) => {
 const coreApiEffect = <A, E extends CoreApiFailure, R>(effect: Effect.Effect<A, E, R>) =>
   effect.pipe(Effect.mapError(toCoreApiError))
 
+const AuthenticationHandlers = HttpApiBuilder.group(
+  RitseiApi,
+  "Authentication",
+  (handlers) =>
+    Effect.gen(function* () {
+      const auth = yield* AuthService
+      const userAccounts = yield* UserAccountService
+      const authorization = yield* AuthorizationService
+      const configuration = yield* CurrentRuntimeConfiguration
+      return handlers
+        .handle("config", () => {
+          const authentication = configuration.authentication
+          if (authentication?.profile === "oidc") {
+            return Effect.succeed({
+              profile: "oidc" as const,
+              issuerUrl: authentication.issuerUrl,
+              clientId: authentication.clientId,
+              authorizationEndpoint: authentication.authorizationEndpoint,
+              tokenEndpoint: authentication.tokenEndpoint,
+              redirectUri: authentication.redirectUri,
+              scopes: authentication.scopes,
+            })
+          }
+          if (authentication?.profile === "transitional-local") {
+            return Effect.succeed({ profile: "transitional-local" as const, scopes: [] as const })
+          }
+          return Effect.fail(new ApiServiceUnavailable({ code: "service_unavailable" }))
+        })
+        .handle("devLogin", () => {
+          const authentication = configuration.authentication
+          if (authentication?.profile !== "transitional-local") {
+            return Effect.fail(new ApiForbidden({ code: "forbidden" }))
+          }
+          const account = authentication.userAccountId === undefined &&
+              authentication.userAccountEmail !== undefined
+            ? Effect.map(
+              userAccounts.list(),
+              (accounts) =>
+                accounts.find((candidate) => candidate.email === authentication.userAccountEmail),
+            )
+            : Effect.succeed(undefined)
+          return Effect.gen(function* () {
+            const resolved = yield* account
+            const userAccountId = authentication.userAccountId ?? resolved?.id
+            if (userAccountId === undefined) {
+              return yield* Effect.fail(new ApiForbidden({ code: "forbidden" }))
+            }
+            return yield* auth.issueSession({ userAccountId, ttlSeconds: 3_600 })
+          }).pipe(
+            Effect.map(({ token, session }) => ({ token, expiresAt: session.expiresAt })),
+            Effect.mapError((error) =>
+              error instanceof ApiForbidden
+                ? error
+                : new ApiServiceUnavailable({ code: "service_unavailable" })
+            ),
+          )
+        })
+        .handle("session", (request) =>
+          Effect.gen(function* () {
+            const principal = yield* CurrentPrincipal
+            const userAccount = yield* userAccounts.getById(principal.userAccountId)
+            const memberships = yield* authorization.listAccessibleTenants({
+              userAccountId: principal.userAccountId,
+            })
+            const requestedTenantId = request.headers["x-tenant-id"]
+            const activeTenant = requestedTenantId === undefined
+              ? memberships[0] ?? null
+              : memberships.find((membership) => membership.tenantId === requestedTenantId) ?? null
+            if (requestedTenantId !== undefined && activeTenant === null) {
+              return yield* Effect.fail(new ApiForbidden({ code: "forbidden" }))
+            }
+            const grants = activeTenant === null ? [] : yield* authorization.listDirectGrants({
+              userAccountId: principal.userAccountId,
+              tenantId: activeTenant.tenantId,
+            })
+            return {
+              user: userAccount,
+              memberships,
+              activeTenant,
+              capabilities: grants.map((grant) => grant.capability),
+            }
+          }).pipe(
+            Effect.mapError((error) =>
+              error instanceof UserAccountNotFound
+                ? new ApiUnauthorized({ code: "unauthorized" })
+                : error instanceof ApiForbidden
+                ? error
+                : error instanceof DatabaseFailure
+                ? new ApiServiceUnavailable({ code: "service_unavailable" })
+                : new ApiConflict({ code: "invalid_request" })
+            ),
+          ))
+        .handle("logout", () =>
+          Effect.gen(function* () {
+            const principal = yield* CurrentPrincipal
+            yield* auth.revoke(principal.sessionId).pipe(
+              Effect.catch((error) =>
+                error instanceof InvalidSessionToken
+                  ? Effect.succeed(undefined)
+                  : Effect.fail(error)
+              ),
+            )
+          }).pipe(
+            Effect.mapError((error) =>
+              error instanceof DatabaseFailure
+                ? new ApiServiceUnavailable({ code: "service_unavailable" })
+                : new ApiUnauthorized({ code: "unauthorized" })
+            ),
+          ))
+    }),
+)
+
 export const BearerAuthLive = Layer.effect(
   BearerAuth,
   Effect.gen(function* () {
@@ -206,7 +338,7 @@ export const BearerAuthLive = Layer.effect(
           CurrentPrincipal,
           auth.authenticate(Redacted.value(options.credential)).pipe(
             Effect.mapError((error) =>
-              error instanceof DatabaseFailure
+              error instanceof DatabaseFailure || error instanceof ExternalProviderUnavailable
                 ? new ApiServiceUnavailable({ code: "service_unavailable" })
                 : new ApiUnauthorized({ code: "unauthorized" })
             ),
@@ -258,7 +390,10 @@ export const UserAccountHandlers = HttpApiBuilder.group(
                 tenantId: headers["x-tenant-id"],
                 capability: IdentityCapabilities.userAccountRead,
               })
-              const members = yield* authorization.listMembers(headers["x-tenant-id"])
+              const members = yield* authorization.listMembers({
+                tenantId: headers["x-tenant-id"],
+                limit: 200,
+              })
               return yield* userAccounts.getByIds(members.map((member) => member.userAccountId))
             }))
           }),
@@ -310,12 +445,57 @@ export const PartyHandlers = HttpApiBuilder.group(
       const party = yield* PartyService
       return handlers
         .handle(
+          "list",
+          Effect.fn("Http.Parties.list")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.list({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              ...query,
+            }))
+          }),
+        )
+        .handle(
+          "get",
+          Effect.fn("Http.Parties.get")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.getDetail({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              partyId: params.id,
+            }))
+          }),
+        )
+        .handle(
           "create",
           Effect.fn("Http.Parties.create")(function* ({ headers, payload }) {
             const principal = yield* CurrentPrincipal
             return yield* coreApiEffect(
               party.create({ principal, tenantId: headers["x-tenant-id"], ...payload }),
             )
+          }),
+        )
+        .handle(
+          "createLegalEntity",
+          Effect.fn("Http.Parties.createLegalEntity")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.createLegalEntity({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              organizationId: params.id,
+            }))
+          }),
+        )
+        .handle(
+          "createBranch",
+          Effect.fn("Http.Parties.createBranch")(function* ({ headers, params, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.createBranch({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              legalEntityId: params.id,
+              ...payload,
+            }))
           }),
         )
         .handle(
@@ -355,6 +535,38 @@ export const PartyHandlers = HttpApiBuilder.group(
           }),
         )
         .handle(
+          "createRepresentation",
+          Effect.fn("Http.Parties.createRepresentation")(function* ({
+            headers,
+            params,
+            payload,
+          }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.createPartyRepresentation({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              partyId: params.id,
+              ...payload,
+            }))
+          }),
+        )
+        .handle(
+          "setRepresentationActive",
+          Effect.fn("Http.Parties.setRepresentationActive")(function* ({
+            headers,
+            params,
+            payload,
+          }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(party.setPartyRepresentationActive({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              representationId: params.id,
+              active: payload.active,
+            }))
+          }),
+        )
+        .handle(
           "findRelatedPartyPaths",
           Effect.fn("Http.Parties.findRelatedPartyPaths")(function* ({ headers, params, query }) {
             const principal = yield* CurrentPrincipal
@@ -362,7 +574,7 @@ export const PartyHandlers = HttpApiBuilder.group(
               principal,
               tenantId: headers["x-tenant-id"],
               sourcePartyId: params.id,
-              limit: query.limit,
+              ...query,
             }))
           }),
         )
@@ -400,7 +612,7 @@ export const AuthorizationHandlers = HttpApiBuilder.group(
         )
         .handle(
           "listMembers",
-          Effect.fn("Http.Authorization.listMembers")(function* ({ headers }) {
+          Effect.fn("Http.Authorization.listMembers")(function* ({ headers, query }) {
             const principal = yield* CurrentPrincipal
             return yield* coreApiEffect(Effect.gen(function* () {
               yield* authorize(
@@ -408,7 +620,63 @@ export const AuthorizationHandlers = HttpApiBuilder.group(
                 headers["x-tenant-id"],
                 AuthorizationCapabilities.tenantMembershipRead,
               )
-              return yield* authorization.listMembers(headers["x-tenant-id"])
+              return yield* authorization.listMembers({
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              })
+            }))
+          }),
+        )
+        .handle(
+          "getMember",
+          Effect.fn("Http.Authorization.getMember")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(Effect.gen(function* () {
+              yield* authorize(
+                principal,
+                headers["x-tenant-id"],
+                AuthorizationCapabilities.tenantMembershipRead,
+              )
+              return yield* authorization.getMember({
+                userAccountId: params.userAccountId,
+                tenantId: headers["x-tenant-id"],
+              })
+            }))
+          }),
+        )
+        .handle(
+          "listDirectGrants",
+          Effect.fn("Http.Authorization.listDirectGrants")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(Effect.gen(function* () {
+              yield* authorize(
+                principal,
+                headers["x-tenant-id"],
+                AuthorizationCapabilities.tenantMembershipRead,
+              )
+              yield* authorize(
+                principal,
+                headers["x-tenant-id"],
+                AuthorizationCapabilities.capabilityGrant,
+              )
+              return yield* authorization.listDirectGrants({
+                userAccountId: params.userAccountId,
+                tenantId: headers["x-tenant-id"],
+              })
+            }))
+          }),
+        )
+        .handle(
+          "listCapabilityDefinitions",
+          Effect.fn("Http.Authorization.listCapabilityDefinitions")(function* ({ headers }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(Effect.gen(function* () {
+              yield* authorize(
+                principal,
+                headers["x-tenant-id"],
+                AuthorizationCapabilities.capabilityGrant,
+              )
+              return CapabilityDefinitions
             }))
           }),
         )
@@ -492,11 +760,55 @@ export const SalesHandlers = HttpApiBuilder.group(
       const sales = yield* SalesService
       return handlers
         .handle(
+          "listCustomers",
+          Effect.fn("Http.Sales.listCustomers")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.listCustomers({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "getCustomer",
+          Effect.fn("Http.Sales.getCustomer")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.getCustomer({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                customerId: params.id,
+              }),
+            )
+          }),
+        )
+        .handle(
           "createCustomer",
           Effect.fn("Http.Sales.createCustomer")(function* ({ headers, payload }) {
             const principal = yield* CurrentPrincipal
             return yield* coreApiEffect(
               sales.createCustomer({ principal, tenantId: headers["x-tenant-id"], ...payload }),
+            )
+          }),
+        )
+        .handle(
+          "listQuotations",
+          Effect.fn("Http.Sales.listQuotations")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.listQuotations({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "getQuotation",
+          Effect.fn("Http.Sales.getQuotation")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.getQuotation({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                quotationId: params.id,
+              }),
             )
           }),
         )
@@ -510,11 +822,60 @@ export const SalesHandlers = HttpApiBuilder.group(
           }),
         )
         .handle(
+          "listOrders",
+          Effect.fn("Http.Sales.listOrders")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.listOrders({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "getOrder",
+          Effect.fn("Http.Sales.getOrder")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.getOrder({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                orderId: params.id,
+              }),
+            )
+          }),
+        )
+        .handle(
           "createOrder",
           Effect.fn("Http.Sales.createOrder")(function* ({ headers, payload }) {
             const principal = yield* CurrentPrincipal
             return yield* coreApiEffect(
               sales.createOrder({ principal, tenantId: headers["x-tenant-id"], ...payload }),
+            )
+          }),
+        )
+        .handle(
+          "confirmOrder",
+          Effect.fn("Http.Sales.confirmOrder")(function* ({ headers, params, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.confirmOrder({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                orderId: params.id,
+                ...payload,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "cancelOrder",
+          Effect.fn("Http.Sales.cancelOrder")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              sales.cancelConfirmedOrder({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                orderId: params.id,
+              }),
             )
           }),
         )
@@ -528,6 +889,76 @@ export const InventoryHandlers = HttpApiBuilder.group(
     Effect.gen(function* () {
       const inventory = yield* InventoryService
       return handlers
+        .handle(
+          "listWarehouses",
+          Effect.fn("Http.Inventory.listWarehouses")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listWarehouses({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "listItems",
+          Effect.fn("Http.Inventory.listItems")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listItems({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "listStockBalances",
+          Effect.fn("Http.Inventory.listStockBalances")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listStockBalances({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listStockReservations",
+          Effect.fn("Http.Inventory.listStockReservations")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listStockReservations({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listStockTransfers",
+          Effect.fn("Http.Inventory.listStockTransfers")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listStockTransfers({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listStockMovements",
+          Effect.fn("Http.Inventory.listStockMovements")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.listStockMovements({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
         .handle(
           "createWarehouse",
           Effect.fn("Http.Inventory.createWarehouse")(function* ({ headers, payload }) {
@@ -551,6 +982,15 @@ export const InventoryHandlers = HttpApiBuilder.group(
           }),
         )
         .handle(
+          "adjustStock",
+          Effect.fn("Http.Inventory.adjustStock")(function* ({ headers, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.adjustStock({ principal, tenantId: headers["x-tenant-id"], ...payload }),
+            )
+          }),
+        )
+        .handle(
           "receiveStock",
           Effect.fn("Http.Inventory.receiveStock")(function* ({ headers, payload }) {
             const principal = yield* CurrentPrincipal
@@ -565,6 +1005,32 @@ export const InventoryHandlers = HttpApiBuilder.group(
             const principal = yield* CurrentPrincipal
             return yield* coreApiEffect(
               inventory.reserveStock({ principal, tenantId: headers["x-tenant-id"], ...payload }),
+            )
+          }),
+        )
+        .handle(
+          "releaseReservation",
+          Effect.fn("Http.Inventory.releaseReservation")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.releaseReservation({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                reservationId: params.id,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "fulfillReservation",
+          Effect.fn("Http.Inventory.fulfillReservation")(function* ({ headers, params }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              inventory.fulfillReservation({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                reservationId: params.id,
+              }),
             )
           }),
         )
@@ -615,6 +1081,17 @@ export const ProcurementHandlers = HttpApiBuilder.group(
       const readYourWrites = yield* Effect.serviceOption(PostgresReadYourWrites)
       return handlers
         .handle(
+          "listSupplierAccounts",
+          Effect.fn("Http.Procurement.listSupplierAccounts")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(procurement.listSupplierAccounts({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              ...query,
+            }))
+          }),
+        )
+        .handle(
           "createSupplierAccount",
           Effect.fn("Http.Procurement.createSupplierAccount")(function* ({ headers, payload }) {
             const principal = yield* CurrentPrincipal
@@ -622,6 +1099,17 @@ export const ProcurementHandlers = HttpApiBuilder.group(
               principal,
               tenantId: headers["x-tenant-id"],
               ...payload,
+            }))
+          }),
+        )
+        .handle(
+          "listPurchaseOrders",
+          Effect.fn("Http.Procurement.listPurchaseOrders")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(procurement.listPurchaseOrders({
+              principal,
+              tenantId: headers["x-tenant-id"],
+              ...query,
             }))
           }),
         )
@@ -689,6 +1177,20 @@ export const ProcurementHandlers = HttpApiBuilder.group(
           }),
         )
         .handle(
+          "listPurchaseReceipts",
+          Effect.fn("Http.Procurement.listPurchaseReceipts")(
+            function* ({ headers, params, query }) {
+              const principal = yield* CurrentPrincipal
+              return yield* coreApiEffect(procurement.listPurchaseReceipts({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                purchaseOrderId: params.id,
+                ...query,
+              }))
+            },
+          ),
+        )
+        .handle(
           "receivePurchaseOrder",
           Effect.fn("Http.Procurement.receivePurchaseOrder")(
             function* ({ headers, params, payload }) {
@@ -711,6 +1213,7 @@ export const ProcessHandlers = HttpApiBuilder.group(
   (handlers) =>
     Effect.gen(function* () {
       const process = yield* ProcessService
+      const studio = yield* ProcessStudioService
       return handlers
         .handle(
           "confirmOrder",
@@ -761,6 +1264,86 @@ export const ProcessHandlers = HttpApiBuilder.group(
             )
           }),
         )
+        .handle(
+          "listCatalog",
+          Effect.fn("Http.Process.listCatalog")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.listCatalog({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "validateDefinition",
+          Effect.fn("Http.Process.validateDefinition")(function* ({ headers, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.validateDefinition({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...payload,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listRuntimeInstances",
+          Effect.fn("Http.Process.listRuntimeInstances")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.listRuntimeInstances({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listWorkflowRuns",
+          Effect.fn("Http.Process.listWorkflowRuns")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.listWorkflowRuns({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "listOperatorInbox",
+          Effect.fn("Http.Process.listOperatorInbox")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.listOperatorInbox({ principal, tenantId: headers["x-tenant-id"], ...query }),
+            )
+          }),
+        )
+        .handle(
+          "listOperatorControls",
+          Effect.fn("Http.Process.listOperatorControls")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.listOperatorControls({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "operateRuntime",
+          Effect.fn("Http.Process.operateRuntime")(function* ({ headers, params, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              studio.operateRuntime({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                instanceId: params.id,
+                ...payload,
+              }),
+            )
+          }),
+        )
     }),
 )
 
@@ -772,6 +1355,71 @@ export const AccountingHandlers = HttpApiBuilder.group(
       const accounting = yield* AccountingService
       const financialOperations = yield* FinancialOperationService
       return handlers
+        .handle(
+          "listConfigurations",
+          Effect.fn("Http.Accounting.listConfigurations")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.listAccountingConfigurations({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listAccounts",
+          Effect.fn("Http.Accounting.listAccounts")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.listAccounts({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listPeriods",
+          Effect.fn("Http.Accounting.listPeriods")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.listAccountingPeriods({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listRevenuePostingProfiles",
+          Effect.fn("Http.Accounting.listRevenuePostingProfiles")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.listRevenuePostingProfiles({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "listJournals",
+          Effect.fn("Http.Accounting.listJournals")(function* ({ headers, query }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.listJournalEntries({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...query,
+              }),
+            )
+          }),
+        )
         .handle(
           "prepareTigerBeetleCutover",
           Effect.fn("Http.Accounting.prepareTigerBeetleCutover")(function* ({ headers, params }) {
@@ -892,6 +1540,46 @@ export const AccountingHandlers = HttpApiBuilder.group(
           }),
         )
         .handle(
+          "configureRevenuePosting",
+          Effect.fn("Http.Accounting.configureRevenuePosting")(function* ({ headers, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.configureRevenuePosting({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...payload,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "openPeriod",
+          Effect.fn("Http.Accounting.openPeriod")(function* ({ headers, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.openPeriod({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                ...payload,
+              }),
+            )
+          }),
+        )
+        .handle(
+          "closePeriod",
+          Effect.fn("Http.Accounting.closePeriod")(function* ({ headers, params, payload }) {
+            const principal = yield* CurrentPrincipal
+            return yield* coreApiEffect(
+              accounting.closePeriod({
+                principal,
+                tenantId: headers["x-tenant-id"],
+                periodId: params.id,
+                ...payload,
+              }),
+            )
+          }),
+        )
+        .handle(
           "rebuildFinancialProjections",
           Effect.fn("Http.Accounting.rebuildFinancialProjections")(
             function* ({ headers, payload }) {
@@ -969,6 +1657,7 @@ export const AccountingHandlers = HttpApiBuilder.group(
     }),
 )
 export const ApiHandlers = Layer.mergeAll(
+  AuthenticationHandlers,
   HealthHandlers,
   UserAccountHandlers,
   PartyHandlers,
