@@ -97,6 +97,10 @@
 
 - [`./documentation-boundaries.md`](./documentation-boundaries.md)
 
+## Development setup
+
+- [`./development/windows-wsl.md`](./development/windows-wsl.md)
+
 ## Decisions and Workflow
 
 - [`./decisions/README.md`](./decisions/README.md)

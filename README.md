@@ -107,6 +107,12 @@ or through `.env` / `.env.local`. `db:generate` creates migration files;
 PostgreSQL integration tests are skipped only when `DATABASE_URL` is unset. If
 it is configured but the database is unreachable or invalid, the tests fail.
 
+### Windows + WSL2/Nix
+
+Keep the repository on Windows and run the reproducible toolchain from NixOS on
+WSL2. The exact setup is documented in
+[`docs/development/windows-wsl.md`](./docs/development/windows-wsl.md).
+
 ## Documentation
 
 - [Documentation index](./docs/README.md)

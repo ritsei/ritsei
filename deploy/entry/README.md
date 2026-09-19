@@ -9,9 +9,11 @@ docker compose -f deploy/entry/compose.yaml config
 docker compose -f deploy/entry/compose.yaml up
 ```
 
-This is a local/reference deployment artifact, not production HA evidence. It does not provide
-PostgreSQL failover, workload isolation, backup automation, TLS, secrets management, or a bounded
-staging cohort. Those remain requirements for the standard, scale, and enterprise profiles.
+The PostgreSQL service is bound to `127.0.0.1:5433` so host or WSL development commands can use the
+same `DATABASE_URL` as `.env.example`. This is a local/reference deployment artifact, not production
+HA evidence. It does not provide PostgreSQL failover, workload isolation, backup automation, TLS,
+secrets management, or a bounded staging cohort. Those remain requirements for the standard, scale,
+and enterprise profiles.
 
 The runtime selectors are explicit:
 
