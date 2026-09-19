@@ -17,6 +17,9 @@ import {
   GetPurchaseOrderInput,
   GoodsReceipt,
   GoodsReceiptLine,
+  ListPurchaseOrdersInput,
+  ListPurchaseReceiptsInput,
+  ListSupplierAccountsInput,
   ProcurementService,
   PurchaseOrder,
   ReceivePurchaseOrderInput,
@@ -97,6 +100,23 @@ export const makeProcurementTestLayer = () =>
             storedSupplierAccounts.set(account.id, account)
             return account
           }),
+        // Fallow: memory and PostgreSQL adapters intentionally mirror public read authorization.
+        // fallow-ignore-next-line code-duplication
+        listSupplierAccounts: (input) =>
+          Effect.gen(function* () {
+            const decoded = yield* Schema.decodeUnknownEffect(ListSupplierAccountsInput)(input)
+            yield* authorization.authorize({
+              principal: decoded.principal,
+              tenantId: decoded.tenantId,
+              capability: ProcurementCapabilities.purchaseOrderRead,
+            })
+            return [...storedSupplierAccounts.values()]
+              .filter((account) => account.tenantId === decoded.tenantId)
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .slice(0, decoded.limit ?? 200)
+          }),
+        // Fallow: memory and PostgreSQL adapters intentionally mirror public command authorization.
+        // fallow-ignore-next-line code-duplication
         createPurchaseOrder: (input) =>
           Effect.gen(function* () {
             const decoded = yield* Schema.decodeUnknownEffect(CreatePurchaseOrderInput)(input)
@@ -147,6 +167,42 @@ export const makeProcurementTestLayer = () =>
               )
             }
             return order
+          }),
+        listPurchaseOrders: (input) =>
+          Effect.gen(function* () {
+            const decoded = yield* Schema.decodeUnknownEffect(ListPurchaseOrdersInput)(input)
+            yield* authorization.authorize({
+              principal: decoded.principal,
+              tenantId: decoded.tenantId,
+              capability: ProcurementCapabilities.purchaseOrderRead,
+            })
+            return [...storedPurchaseOrders.values()]
+              .filter((order) =>
+                order.tenantId === decoded.tenantId &&
+                (decoded.supplierAccountId === undefined ||
+                  order.supplierAccountId === decoded.supplierAccountId) &&
+                (decoded.status === undefined || order.status === decoded.status)
+              )
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .slice(0, decoded.limit ?? 200)
+          }),
+        // Fallow: memory and PostgreSQL adapters intentionally mirror public receipt-read authorization.
+        // fallow-ignore-next-line code-duplication
+        listPurchaseReceipts: (input) =>
+          Effect.gen(function* () {
+            const decoded = yield* Schema.decodeUnknownEffect(ListPurchaseReceiptsInput)(input)
+            yield* authorization.authorize({
+              principal: decoded.principal,
+              tenantId: decoded.tenantId,
+              capability: ProcurementCapabilities.purchaseOrderRead,
+            })
+            return [...storedReceipts.values()]
+              .filter((receipt) =>
+                receipt.tenantId === decoded.tenantId &&
+                receipt.purchaseOrderId === decoded.purchaseOrderId
+              )
+              .sort((left, right) => left.id.localeCompare(right.id))
+              .slice(0, decoded.limit ?? 200)
           }),
         confirmPurchaseOrder: (input) =>
           Effect.gen(function* () {

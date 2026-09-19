@@ -1,4 +1,4 @@
-import { and, eq, sql } from "drizzle-orm"
+import { and, asc, eq, inArray, sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
@@ -34,7 +34,11 @@ import {
   GetPurchaseOrderInput,
   GoodsReceipt,
   GoodsReceiptLine,
+  ListPurchaseOrdersInput,
+  ListPurchaseReceiptsInput,
+  ListSupplierAccountsInput,
   ProcurementService,
+  PurchaseOrderLineSnapshot,
   ReceivePurchaseOrderInput,
 } from "./contract.ts"
 import {
@@ -60,8 +64,10 @@ import {
   canonicalReceiptLines,
   deriveTotal,
   loadSupplierRelationship,
+  purchaseOrderLineListSelection,
   purchaseOrderLineSelection,
   purchaseOrderSelection,
+  purchaseReceiptLineListSelection,
   purchaseReceiptLineSelection,
   purchaseReceiptSelection,
   sameReceiptLines,
@@ -132,6 +138,40 @@ export const makeProcurementService = Effect.gen(function* () {
           legalEntityId: relationship.legalEntityId,
         }
       }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public read authorization.
+    // fallow-ignore-next-line code-duplication
+    listSupplierAccounts: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListSupplierAccountsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: ProcurementCapabilities.purchaseOrderRead,
+        })
+        const rows = yield* database.query(
+          (db) =>
+            db.select(supplierAccountSelection)
+              .from(supplierAccounts)
+              .where(eq(supplierAccounts.tenantId, decoded.tenantId))
+              .orderBy(asc(supplierAccounts.id))
+              .limit(decoded.limit ?? 200),
+          "procurement.supplier_account.list",
+        )
+        return yield* Effect.forEach(rows, (row) =>
+          loadSupplierRelationship(party, {
+            principal: decoded.principal,
+            tenantId: decoded.tenantId,
+            supplierRelationshipId: row.supplierRelationshipId,
+          }).pipe(
+            Effect.map((relationship) => ({
+              ...row,
+              partyId: relationship.partyId,
+              legalEntityId: relationship.legalEntityId,
+            })),
+          ))
+      }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public command authorization.
+    // fallow-ignore-next-line code-duplication
     createPurchaseOrder: (input) =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknownEffect(CreatePurchaseOrderInput)(input)
@@ -223,6 +263,86 @@ export const makeProcurementService = Effect.gen(function* () {
           )
         }
         return order
+      }),
+    listPurchaseOrders: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListPurchaseOrdersInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: ProcurementCapabilities.purchaseOrderRead,
+        })
+        return yield* database.transaction(
+          async (tx) => {
+            const orders = await tx.select(purchaseOrderSelection)
+              .from(purchaseOrders)
+              .where(and(
+                eq(purchaseOrders.tenantId, decoded.tenantId),
+                decoded.supplierAccountId === undefined
+                  ? undefined
+                  : eq(purchaseOrders.supplierAccountId, decoded.supplierAccountId),
+                decoded.status === undefined
+                  ? undefined
+                  : eq(purchaseOrders.status, decoded.status),
+              ))
+              .orderBy(asc(purchaseOrders.id))
+              .limit(decoded.limit ?? 200)
+            if (orders.length === 0) return []
+            const lines = await tx.select(purchaseOrderLineListSelection)
+              .from(purchaseOrderLines)
+              .where(inArray(purchaseOrderLines.purchaseOrderId, orders.map((order) => order.id)))
+            const linesByOrder = new Map<string, PurchaseOrderLineSnapshot[]>()
+            for (const line of lines) {
+              const orderLines = linesByOrder.get(line.purchaseOrderId) ?? []
+              orderLines.push({
+                id: line.id,
+                itemId: line.itemId,
+                quantity: line.quantity,
+                unitPrice: line.unitPrice,
+              })
+              linesByOrder.set(line.purchaseOrderId, orderLines)
+            }
+            return orders.map((order) => toPurchaseOrder(order, linesByOrder.get(order.id) ?? []))
+          },
+          "procurement.purchase_order.list",
+        )
+      }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public receipt-read authorization.
+    // fallow-ignore-next-line code-duplication
+    listPurchaseReceipts: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListPurchaseReceiptsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: ProcurementCapabilities.purchaseOrderRead,
+        })
+        return yield* database.transaction(
+          async (tx) => {
+            const receipts = await tx.select(purchaseReceiptSelection)
+              .from(purchaseReceipts)
+              .where(and(
+                eq(purchaseReceipts.tenantId, decoded.tenantId),
+                eq(purchaseReceipts.purchaseOrderId, decoded.purchaseOrderId),
+              ))
+              .orderBy(asc(purchaseReceipts.id))
+              .limit(decoded.limit ?? 200)
+            if (receipts.length === 0) return []
+            const lines = await tx.select(purchaseReceiptLineListSelection)
+              .from(purchaseReceiptLines)
+              .where(inArray(purchaseReceiptLines.receiptId, receipts.map((receipt) => receipt.id)))
+            const linesByReceipt = new Map<string, GoodsReceiptLine[]>()
+            for (const line of lines) {
+              const receiptLines = linesByReceipt.get(line.receiptId) ?? []
+              receiptLines.push(toGoodsReceiptLine(line))
+              linesByReceipt.set(line.receiptId, receiptLines)
+            }
+            return receipts.map((receipt) =>
+              toGoodsReceipt(receipt, linesByReceipt.get(receipt.id) ?? [])
+            )
+          },
+          "procurement.purchase_receipt.list",
+        )
       }),
     confirmPurchaseOrder: (input) =>
       Effect.gen(function* () {

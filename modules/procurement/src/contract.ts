@@ -63,11 +63,13 @@ export const PurchaseOrderLineSnapshot = Schema.Struct({
   unitPrice: FinancialMajorAmount,
 })
 
+export const PurchaseOrderStatus = Schema.Literals(["draft", "confirmed", "cancelled"])
+
 export const PurchaseOrder = Schema.Struct({
   id: Uuid,
   tenantId: Uuid,
   supplierAccountId: Uuid,
-  status: Schema.Literals(["draft", "confirmed", "cancelled"]),
+  status: PurchaseOrderStatus,
   confirmedAt: Schema.NullOr(InstantString),
   total: FinancialMajorAmount,
   lines: Schema.Array(PurchaseOrderLineSnapshot).check(Schema.isMinLength(1)),
@@ -93,7 +95,10 @@ export const PurchaseOrder = Schema.Struct({
 export type SupplierAccount = Schema.Schema.Type<typeof SupplierAccount>
 export type PurchaseOrderLine = Schema.Schema.Type<typeof PurchaseOrderLine>
 export type PurchaseOrderLineSnapshot = Schema.Schema.Type<typeof PurchaseOrderLineSnapshot>
+export type PurchaseOrderStatus = Schema.Schema.Type<typeof PurchaseOrderStatus>
 export type PurchaseOrder = Schema.Schema.Type<typeof PurchaseOrder>
+
+const ListLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))
 
 export const CreateSupplierAccountInput = Schema.Struct({
   principal: Principal,
@@ -101,11 +106,25 @@ export const CreateSupplierAccountInput = Schema.Struct({
   supplierRelationshipId: Uuid,
 })
 
+export const ListSupplierAccountsInput = Schema.Struct({
+  principal: Principal,
+  tenantId: Uuid,
+  limit: Schema.optionalKey(ListLimit),
+})
+
 export const CreatePurchaseOrderInput = Schema.Struct({
   principal: Principal,
   tenantId: Uuid,
   supplierAccountId: Uuid,
   lines: Schema.Array(PurchaseOrderLine).check(Schema.isMinLength(1)),
+})
+
+export const ListPurchaseOrdersInput = Schema.Struct({
+  principal: Principal,
+  tenantId: Uuid,
+  supplierAccountId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(PurchaseOrderStatus),
+  limit: Schema.optionalKey(ListLimit),
 })
 
 export const ConfirmPurchaseOrderInput = Schema.Struct({
@@ -131,6 +150,16 @@ export const PurchaseReceiptLineInput = Schema.Struct({
   purchaseOrderLineId: Uuid,
   quantity: Quantity,
 })
+
+export const ListPurchaseReceiptsInput = Schema.Struct({
+  principal: Principal,
+  tenantId: Uuid,
+  purchaseOrderId: Uuid,
+  limit: Schema.optionalKey(ListLimit),
+})
+export type ListSupplierAccounts = Schema.Schema.Type<typeof ListSupplierAccountsInput>
+export type ListPurchaseOrders = Schema.Schema.Type<typeof ListPurchaseOrdersInput>
+export type ListPurchaseReceipts = Schema.Schema.Type<typeof ListPurchaseReceiptsInput>
 
 export const ReceivePurchaseOrderInput = Schema.Struct({
   principal: Principal,
@@ -189,6 +218,12 @@ export interface ProcurementService {
     SupplierAccount,
     SupplierAccountAlreadyExists | SupplierRelationshipNotEligible | CommonFailure
   >
+  readonly listSupplierAccounts: (
+    input: unknown,
+  ) => Effect.Effect<
+    ReadonlyArray<SupplierAccount>,
+    SupplierRelationshipNotEligible | CommonFailure
+  >
   readonly createPurchaseOrder: (
     input: unknown,
   ) => Effect.Effect<PurchaseOrder, SupplierAccountNotFound | CommonFailure>
@@ -198,6 +233,12 @@ export interface ProcurementService {
     PurchaseOrder,
     PurchaseOrderNotFound | ReplicaConsistencyFailure | CommonFailure
   >
+  readonly listPurchaseOrders: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<PurchaseOrder>, CommonFailure>
+  readonly listPurchaseReceipts: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<GoodsReceipt>, CommonFailure>
   readonly confirmPurchaseOrder: (
     input: unknown,
   ) => Effect.Effect<

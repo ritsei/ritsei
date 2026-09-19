@@ -319,6 +319,18 @@ describe("procurement contract", () => {
         lines,
       })
 
+      assert.deepStrictEqual(
+        yield* procurement.listSupplierAccounts({ principal, tenantId }),
+        [supplierAccount],
+      )
+      assert.deepStrictEqual(
+        yield* procurement.listPurchaseOrders({ principal, tenantId, status: "draft" }),
+        [order],
+      )
+      assert.deepStrictEqual(
+        yield* procurement.listPurchaseOrders({ principal, tenantId: otherTenantId }),
+        [],
+      )
       assert.strictEqual(order.status, "draft")
       assert.strictEqual(order.total, "37.04")
       for (const line of order.lines) {
@@ -831,6 +843,14 @@ describe("procurement contract", () => {
       const first = yield* procurement.receivePurchaseOrder(firstInput)
       yield* Schema.decodeUnknownEffect(GoodsReceipt)(first)
       assert.strictEqual(first.idempotencyKey, "receipt-1")
+      assert.deepStrictEqual(
+        yield* procurement.listPurchaseReceipts({
+          principal,
+          tenantId,
+          purchaseOrderId: confirmed.id,
+        }),
+        [first],
+      )
       assert.strictEqual(
         (yield* Effect.flip(
           Schema.decodeUnknownEffect(GoodsReceipt)({ ...first, idempotencyKey: " receipt-1 " }),

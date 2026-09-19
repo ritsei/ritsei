@@ -184,6 +184,28 @@ it.effect.skipIf(databaseUrl === undefined)(
             lines,
           })
           assert.strictEqual(order.total, "37.04")
+          assert.deepStrictEqual(
+            (yield* procurement.listSupplierAccounts({
+              principal,
+              tenantId: tenant.id,
+            })).map(({ id }) => id),
+            [account.id],
+          )
+          assert.deepStrictEqual(
+            (yield* procurement.listPurchaseOrders({
+              principal,
+              tenantId: tenant.id,
+              status: "draft",
+            })).map(({ id }) => id),
+            [order.id],
+          )
+          assert.deepStrictEqual(
+            yield* procurement.listPurchaseOrders({
+              principal,
+              tenantId: otherTenant.id,
+            }),
+            [],
+          )
           const persisted = yield* Effect.promise(() =>
             client<{
               id: string
@@ -902,6 +924,14 @@ it.effect.skipIf(databaseUrl === undefined)(
             procurement.receivePurchaseOrder(receiptInput),
             InventoryService,
             inventory,
+          )
+          assert.deepStrictEqual(
+            yield* procurement.listPurchaseReceipts({
+              principal,
+              tenantId: tenant.id,
+              purchaseOrderId: confirmed.id,
+            }),
+            [first],
           )
           const cancelledOrderWithReceipt = yield* postgresFailure(() =>
             client`

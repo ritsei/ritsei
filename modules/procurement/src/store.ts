@@ -74,6 +74,11 @@ export const purchaseOrderLineSelection = {
   unitPrice: purchaseOrderLines.unitPrice,
 }
 
+export const purchaseOrderLineListSelection = {
+  purchaseOrderId: purchaseOrderLines.purchaseOrderId,
+  ...purchaseOrderLineSelection,
+}
+
 export const purchaseReceiptSelection = {
   id: purchaseReceipts.id,
   tenantId: purchaseReceipts.tenantId,
@@ -89,6 +94,11 @@ export const purchaseReceiptLineSelection = {
   itemId: purchaseReceiptLines.itemId,
   quantity: purchaseReceiptLines.quantity,
   unitOfMeasure: purchaseReceiptLines.unitOfMeasure,
+}
+
+export const purchaseReceiptLineListSelection = {
+  receiptId: purchaseReceiptLines.receiptId,
+  ...purchaseReceiptLineSelection,
 }
 
 export const toGoodsReceipt = (
@@ -174,11 +184,20 @@ export const withProcurementOperationNames = (service: ProcurementStore): Procur
   createSupplierAccount: Effect.fn("ProcurementService.createSupplierAccount")((input: unknown) =>
     service.createSupplierAccount(input)
   ),
+  listSupplierAccounts: Effect.fn("ProcurementService.listSupplierAccounts")((input: unknown) =>
+    service.listSupplierAccounts(input)
+  ),
   createPurchaseOrder: Effect.fn("ProcurementService.createPurchaseOrder")((input: unknown) =>
     service.createPurchaseOrder(input)
   ),
   getPurchaseOrder: Effect.fn("ProcurementService.getPurchaseOrder")((input: unknown) =>
     service.getPurchaseOrder(input)
+  ),
+  listPurchaseOrders: Effect.fn("ProcurementService.listPurchaseOrders")((input: unknown) =>
+    service.listPurchaseOrders(input)
+  ),
+  listPurchaseReceipts: Effect.fn("ProcurementService.listPurchaseReceipts")((input: unknown) =>
+    service.listPurchaseReceipts(input)
   ),
   confirmPurchaseOrder: Effect.fn("ProcurementService.confirmPurchaseOrder")((input: unknown) =>
     service.confirmPurchaseOrder(input)
