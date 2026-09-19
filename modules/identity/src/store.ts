@@ -1,6 +1,11 @@
 import type { DatabaseFailure } from "../../../foundation/mod.ts"
 import type { UserAccount, UserAccountAuthenticationState } from "./contract.ts"
-import type { UserAccountAlreadyExists, UserAccountNotFound } from "./errors.ts"
+import type {
+  ExternalSubjectAlreadyBound,
+  ExternalSubjectNotFound,
+  UserAccountAlreadyExists,
+  UserAccountNotFound,
+} from "./errors.ts"
 
 export type UserAccountStoreError =
   | UserAccountAlreadyExists
@@ -8,6 +13,18 @@ export type UserAccountStoreError =
   | DatabaseFailure
 
 export interface UserAccountStore {
+  readonly resolveExternalSubject: (
+    issuer: string,
+    subject: string,
+  ) => import("effect/Effect").Effect<UserAccount, ExternalSubjectNotFound | DatabaseFailure>
+  readonly bindExternalSubject: (
+    issuer: string,
+    subject: string,
+    userAccountId: string,
+  ) => import("effect/Effect").Effect<
+    UserAccount,
+    ExternalSubjectAlreadyBound | UserAccountNotFound | DatabaseFailure
+  >
   readonly create: (
     email: string,
   ) => import("effect/Effect").Effect<UserAccount, UserAccountAlreadyExists | DatabaseFailure>

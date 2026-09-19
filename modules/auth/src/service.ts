@@ -1,13 +1,19 @@
 import * as Clock from "effect/Clock"
 import * as Crypto from "effect/Crypto"
 import * as Effect from "effect/Effect"
+import * as Option from "effect/Option"
 import * as Schema from "effect/Schema"
 
-import { UserAccountNotFound, UserAccountService } from "../../identity/mod.ts"
+import {
+  ExternalSubjectNotFound,
+  UserAccountNotFound,
+  UserAccountService,
+} from "../../identity/mod.ts"
 import { DatabaseFailure } from "../../../foundation/mod.ts"
 import {
   AuthService,
   CreateTenantInput,
+  IdentityProvider,
   type IssuedSession,
   IssueSessionInput,
   Principal,
@@ -47,7 +53,15 @@ export const makeAuthService = Effect.gen(function* () {
   const userAccounts = yield* UserAccountService
   const crypto = yield* Crypto.Crypto
   const clock = yield* Clock.Clock
+  const identityProvider = yield* Effect.serviceOption(IdentityProvider)
   const now = () => new Date(clock.currentTimeMillisUnsafe())
+
+  const findTenantBySlug = Effect.fn("auth.findTenantBySlug")(function* (slug: string) {
+    const normalized = slug.trim().toLowerCase()
+    return yield* store.findTenantBySlug(normalized).pipe(
+      Effect.map((tenant) => tenant === undefined ? undefined : { ...tenant } satisfies Tenant),
+    )
+  })
 
   const createTenant = Effect.fn("auth.createTenant")(function* (input: unknown) {
     const decoded = yield* Schema.decodeUnknownEffect(CreateTenantInput)(input)
@@ -89,10 +103,41 @@ export const makeAuthService = Effect.gen(function* () {
   })
 
   const authenticate = Effect.fn("auth.authenticate")(function* (token: string) {
-    const tokenHash = yield* hashToken(crypto, token)
-    const row = yield* store.findActiveSession(tokenHash, now())
-    if (row === undefined) return yield* Effect.fail(new InvalidSessionToken({}))
-    const account = yield* userAccounts.getAuthenticationState(row.userAccountId).pipe(
+    if (Option.isNone(identityProvider)) {
+      const tokenHash = yield* hashToken(crypto, token)
+      const row = yield* store.findActiveSession(tokenHash, now())
+      if (row === undefined) return yield* Effect.fail(new InvalidSessionToken({}))
+      const account = yield* userAccounts.getAuthenticationState(row.userAccountId).pipe(
+        Effect.mapError((error) =>
+          error instanceof UserAccountNotFound || error instanceof Schema.SchemaError
+            ? new InvalidSessionToken({})
+            : error
+        ),
+      )
+      if (
+        account.status === "disabled" ||
+        (account.sessionInvalidatedAt !== null &&
+          row.createdAt.getTime() <= Date.parse(account.sessionInvalidatedAt))
+      ) return yield* Effect.fail(new InvalidSessionToken({}))
+      return {
+        userAccountId: row.userAccountId,
+        sessionId: row.id,
+        authentication: "local" as const,
+      } satisfies Schema.Schema.Type<typeof Principal>
+    }
+
+    const external = yield* identityProvider.value.authenticate(token)
+    const account = yield* userAccounts.resolveExternalSubject({
+      issuer: external.issuer,
+      subject: external.subject,
+    }).pipe(
+      Effect.mapError((error) =>
+        error instanceof ExternalSubjectNotFound || error instanceof Schema.SchemaError
+          ? new InvalidSessionToken({})
+          : error
+      ),
+    )
+    const state = yield* userAccounts.getAuthenticationState(account.id).pipe(
       Effect.mapError((error) =>
         error instanceof UserAccountNotFound || error instanceof Schema.SchemaError
           ? new InvalidSessionToken({})
@@ -100,20 +145,34 @@ export const makeAuthService = Effect.gen(function* () {
       ),
     )
     if (
-      account.status === "disabled" ||
-      (account.sessionInvalidatedAt !== null &&
-        row.createdAt.getTime() <= Date.parse(account.sessionInvalidatedAt))
+      state.status === "disabled" ||
+      (state.sessionInvalidatedAt !== null &&
+        external.issuedAt * 1_000 <= Date.parse(state.sessionInvalidatedAt))
     ) return yield* Effect.fail(new InvalidSessionToken({}))
-    return { userAccountId: row.userAccountId, sessionId: row.id } satisfies Schema.Schema.Type<
-      typeof Principal
-    >
+    const sessionId = yield* hashToken(crypto, `${external.issuer}\u0000${external.subject}`).pipe(
+      Effect.map((hash) => `external:${hash}`),
+    )
+    return {
+      userAccountId: account.id,
+      sessionId,
+      authentication: "external" as const,
+      externalIssuer: external.issuer,
+      externalSubject: external.subject,
+    } satisfies Schema.Schema.Type<typeof Principal>
   })
 
   const revoke = Effect.fn("auth.revoke")(function* (sessionId: string) {
+    if (sessionId.startsWith("external:")) return
     if (!(yield* store.revokeSession(sessionId, now()))) {
       return yield* Effect.fail(new InvalidSessionToken({}))
     }
   })
 
-  return { createTenant, issueSession, authenticate, revoke } satisfies AuthService
+  return {
+    findTenantBySlug,
+    createTenant,
+    issueSession,
+    authenticate,
+    revoke,
+  } satisfies AuthService
 })

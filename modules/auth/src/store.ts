@@ -12,6 +12,12 @@ export interface StoredSession {
 }
 
 export interface AuthStore {
+  readonly findTenantBySlug: (
+    slug: string,
+  ) => Effect.Effect<
+    { readonly id: string; readonly slug: string; readonly timezone: string } | undefined,
+    DatabaseFailure
+  >
   readonly createTenant: (
     slug: string,
     timezone: string,

@@ -5,6 +5,8 @@ import * as Schema from "effect/Schema"
 
 import {
   CreateUserAccountForTenantInput,
+  ExternalSubjectAlreadyBound,
+  ExternalSubjectNotFound,
   IdentityAccountAuthorizer,
   IdentityAuthorizationDenied,
   IdentityEventPublisher,
@@ -117,6 +119,33 @@ describe("user account contract", () => {
           /^[0-9a-f]{8}-[0-9a-f]{4}-7[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i,
         )
         assert.strictEqual(userAccount.status, "active")
+      }),
+    ))
+
+  it.effect("binds and resolves an issuer-scoped external subject", () =>
+    withUserAccount(
+      Effect.gen(function* () {
+        const service = yield* UserAccountService
+        const account = yield* service.create({ email: "external@example.com" })
+        const subject = { issuer: "https://issuer.example.test", subject: "subject-1" }
+        assert.strictEqual(
+          (yield* service.bindExternalSubject({ ...subject, userAccountId: account.id })).id,
+          account.id,
+        )
+        assert.strictEqual((yield* service.resolveExternalSubject(subject)).id, account.id)
+        assert.strictEqual(
+          (yield* service.bindExternalSubject({ ...subject, userAccountId: account.id })).id,
+          account.id,
+        )
+        const other = yield* service.create({ email: "other-external@example.com" })
+        assert.instanceOf(
+          yield* Effect.flip(service.bindExternalSubject({ ...subject, userAccountId: other.id })),
+          ExternalSubjectAlreadyBound,
+        )
+        assert.instanceOf(
+          yield* Effect.flip(service.resolveExternalSubject({ ...subject, subject: "missing" })),
+          ExternalSubjectNotFound,
+        )
       }),
     ))
 

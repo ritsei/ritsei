@@ -13,8 +13,10 @@ export {
 } from "./src/events.ts"
 
 export {
+  BindExternalSubjectInput,
   CreateUserAccountForTenantInput,
   CreateUserAccountInput,
+  ExternalSubject,
   UpdateUserAccountInput,
   UserAccount,
   UserAccountAuthenticationState,
@@ -23,6 +25,8 @@ export {
 } from "./src/contract.ts"
 export type { UserAccountService as UserAccountServiceShape } from "./src/contract.ts"
 export {
+  ExternalSubjectAlreadyBound,
+  ExternalSubjectNotFound,
   IdentityAuthorizationDenied,
   UserAccountAlreadyExists,
   UserAccountNotFound,

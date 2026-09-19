@@ -1,11 +1,16 @@
-import { eq, inArray } from "drizzle-orm"
+import { and, eq, inArray } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Effect from "effect/Effect"
 
-import { userAccounts } from "../../../db/schema/identity.ts"
-import { Database, isDatabaseConstraint } from "../../../foundation/mod.ts"
+import { externalSubjectMappings, userAccounts } from "../../../db/schema/identity.ts"
+import { Database, DatabaseFailure, isDatabaseConstraint } from "../../../foundation/mod.ts"
 import type { UserAccount, UserAccountAuthenticationState, UserAccountStatus } from "./contract.ts"
-import { UserAccountAlreadyExists, UserAccountNotFound } from "./errors.ts"
+import {
+  ExternalSubjectAlreadyBound,
+  ExternalSubjectNotFound,
+  UserAccountAlreadyExists,
+  UserAccountNotFound,
+} from "./errors.ts"
 import type { UserAccountStore } from "./store.ts"
 
 const selectUserAccount = {
@@ -41,6 +46,10 @@ const toAuthenticationState = (row: {
 })
 
 const isDuplicateEmail = (error: unknown) => isDatabaseConstraint(error, "user_accounts_email_key")
+const isDuplicateExternalSubject = (error: unknown) =>
+  isDatabaseConstraint(error, "external_subject_mappings_issuer_subject_key")
+const isMissingExternalSubjectUser = (error: unknown) =>
+  isDatabaseConstraint(error, "external_subject_mappings_user_account_id_fkey", "23503")
 
 export const makeUserAccountPostgresStore = Effect.gen(function* () {
   const database = yield* Database
@@ -69,6 +78,83 @@ export const makeUserAccountPostgresStore = Effect.gen(function* () {
       ? yield* Effect.fail(new UserAccountNotFound({ id }))
       : toUserAccount(row)
   })
+
+  const resolveExternalSubject = Effect.fn("UserAccountStore.resolveExternalSubject")(
+    function* (issuer: string, subject: string) {
+      const rows = yield* database.query(
+        (db) =>
+          db.select(selectUserAccount)
+            .from(externalSubjectMappings)
+            .innerJoin(userAccounts, eq(externalSubjectMappings.userAccountId, userAccounts.id))
+            .where(and(
+              eq(externalSubjectMappings.issuer, issuer),
+              eq(externalSubjectMappings.subject, subject),
+            )),
+        "user-account.external-subject.resolve",
+      )
+      const row = rows[0]
+      return row === undefined
+        ? yield* Effect.fail(new ExternalSubjectNotFound({ issuer, subject }))
+        : toUserAccount(row)
+    },
+  )
+
+  const bindExternalSubject = Effect.fn("UserAccountStore.bindExternalSubject")(
+    function* (issuer: string, subject: string, userAccountId: string) {
+      const account = yield* getById(userAccountId)
+      const existing = yield* database.query(
+        (db) =>
+          db.select({ userAccountId: externalSubjectMappings.userAccountId })
+            .from(externalSubjectMappings)
+            .where(and(
+              eq(externalSubjectMappings.issuer, issuer),
+              eq(externalSubjectMappings.subject, subject),
+            )),
+        "user-account.external-subject.lookup",
+      )
+      const existingMapping = existing[0]
+      if (existingMapping !== undefined && existingMapping.userAccountId !== userAccountId) {
+        return yield* Effect.fail(
+          new ExternalSubjectAlreadyBound({ issuer, subject, userAccountId }),
+        )
+      }
+      if (existingMapping !== undefined) return account
+      yield* database.query(
+        (db) => db.insert(externalSubjectMappings).values({ issuer, subject, userAccountId }),
+        "user-account.external-subject.bind",
+      ).pipe(
+        Effect.catchEager((error): Effect.Effect<
+          undefined,
+          DatabaseFailure | ExternalSubjectAlreadyBound | UserAccountNotFound
+        > => {
+          if (!isDuplicateExternalSubject(error)) {
+            return Effect.fail(
+              isMissingExternalSubjectUser(error)
+                ? new UserAccountNotFound({ id: userAccountId })
+                : error,
+            )
+          }
+          return database.query(
+            (db) =>
+              db.select({ userAccountId: externalSubjectMappings.userAccountId })
+                .from(externalSubjectMappings)
+                .where(and(
+                  eq(externalSubjectMappings.issuer, issuer),
+                  eq(externalSubjectMappings.subject, subject),
+                )),
+            "user-account.external-subject.recheck",
+          ).pipe(
+            Effect.flatMap((rows) =>
+              rows[0]?.userAccountId === userAccountId
+                ? Effect.succeed(undefined)
+                : Effect.fail(new ExternalSubjectAlreadyBound({ issuer, subject, userAccountId }))
+            ),
+          )
+        }),
+      )
+      return account
+    },
+  )
 
   const getByIds = Effect.fn("UserAccountStore.getByIds")(function* (ids: readonly string[]) {
     if (ids.length === 0) return []
@@ -167,6 +253,8 @@ export const makeUserAccountPostgresStore = Effect.gen(function* () {
 
   return {
     create,
+    resolveExternalSubject,
+    bindExternalSubject,
     getById,
     getByIds,
     getAuthenticationState,

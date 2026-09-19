@@ -33,6 +33,15 @@ const isMissingUserAccount = (error: unknown) =>
 
 export const makePostgresAuthStore = Effect.gen(function* () {
   const database = yield* Database
+  const findTenantBySlug: AuthStore["findTenantBySlug"] = (slug) =>
+    database.query(
+      (db) =>
+        db.select({ id: tenants.id, slug: tenants.slug, timezone: tenants.timezone })
+          .from(tenants)
+          .where(eq(tenants.slug, slug)),
+      "tenant.find-by-slug",
+    ).pipe(Effect.map((rows) => rows[0] === undefined ? undefined : rows[0]))
+
   const createTenant: AuthStore["createTenant"] = (slug, timezone) =>
     database.query(
       (db) =>
@@ -86,5 +95,11 @@ export const makePostgresAuthStore = Effect.gen(function* () {
       "session.revoke",
     ).pipe(Effect.map((rows) => rows[0] !== undefined))
 
-  return { createTenant, createSession, findActiveSession, revokeSession } satisfies AuthStore
+  return {
+    findTenantBySlug,
+    createTenant,
+    createSession,
+    findActiveSession,
+    revokeSession,
+  } satisfies AuthStore
 })

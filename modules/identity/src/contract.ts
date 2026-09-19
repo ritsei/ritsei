@@ -17,6 +17,7 @@ const LowercaseTrimmedNonEmptyString = Schema.String.check(
 )
 const InstantString = EventEnvelope.fields.occurredAt
 const Uuid = Schema.String.check(Schema.isUUID())
+const ExternalSubjectPart = Schema.String.check(Schema.isPattern(/\S/), Schema.isTrimmed())
 export const UserAccountId = Uuid
 
 export const CreateUserAccountInput = Schema.Struct({
@@ -38,6 +39,17 @@ export const UserAccount = Schema.Struct({
   id: Uuid,
   email: LowercaseTrimmedNonEmptyString,
   status: UserAccountStatus,
+})
+
+export const ExternalSubject = Schema.Struct({
+  issuer: ExternalSubjectPart,
+  subject: ExternalSubjectPart,
+})
+
+export const BindExternalSubjectInput = Schema.Struct({
+  issuer: ExternalSubjectPart,
+  subject: ExternalSubjectPart,
+  userAccountId: Uuid,
 })
 
 export const UserAccountAuthenticationState = Schema.Struct({
@@ -69,6 +81,23 @@ export interface UserAccountService {
     | UserAccountAlreadyExists
     | import("../../../foundation/mod.ts").DatabaseFailure
     | import("../../messaging/mod.ts").EventIdempotencyConflict
+  >
+  readonly resolveExternalSubject: (
+    input: unknown,
+  ) => Effect.Effect<
+    UserAccount,
+    | import("./errors.ts").ExternalSubjectNotFound
+    | import("effect/Schema").SchemaError
+    | import("../../../foundation/mod.ts").DatabaseFailure
+  >
+  readonly bindExternalSubject: (
+    input: unknown,
+  ) => Effect.Effect<
+    UserAccount,
+    | import("./errors.ts").ExternalSubjectAlreadyBound
+    | import("./errors.ts").UserAccountNotFound
+    | import("effect/Schema").SchemaError
+    | import("../../../foundation/mod.ts").DatabaseFailure
   >
   readonly getById: (
     id: string,

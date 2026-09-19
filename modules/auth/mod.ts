@@ -1,6 +1,8 @@
 export {
   AuthService,
   CreateTenantInput,
+  ExternalIdentity,
+  IdentityProvider,
   IssueSessionInput,
   Principal,
   Session,
@@ -8,6 +10,8 @@ export {
 } from "./src/contract.ts"
 export type {
   AuthService as AuthServiceShape,
+  ExternalIdentity as ExternalIdentityType,
+  IdentityProvider as IdentityProviderShape,
   IssuedSession,
   Principal as PrincipalType,
   Session as SessionType,
@@ -15,6 +19,8 @@ export type {
 } from "./src/contract.ts"
 
 export {
+  ExternalProviderUnavailable,
+  InvalidExternalAssertion,
   InvalidSessionToken,
   SessionUserAccountDisabled,
   SessionUserAccountNotFound,

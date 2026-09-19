@@ -30,7 +30,7 @@ export {
 export { authSchema, sessions, tenants } from "./auth.ts"
 export { authorizationSchema, memberships, tenantMemberships } from "./authorization.ts"
 export { createdAt, id, money, updatedAt, uuidv7 } from "./common.ts"
-export { identitySchema, userAccounts } from "./identity.ts"
+export { externalSubjectMappings, identitySchema, userAccounts } from "./identity.ts"
 export {
   externalConnectorGovernance,
   externalConnectorStatus,

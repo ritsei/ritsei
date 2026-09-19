@@ -13,6 +13,7 @@
   "tasks": {
     "dev": "deno run --watch --allow-read --allow-env --allow-net runtime/api/mod.ts",
     "worker": "deno run -A runtime/worker/mod.ts",
+    "auth:bootstrap": "deno run -A runtime/auth/bootstrap.ts",
     "db:generate": "deno run -A npm:drizzle-kit@1.0.0-rc.4 generate --config=drizzle.config.ts",
     "db:migrate": "deno run -A npm:drizzle-kit@1.0.0-rc.4 migrate --config=drizzle.config.ts",
     "db:check": "deno run -A npm:drizzle-kit@1.0.0-rc.4 check --config=drizzle.config.ts",

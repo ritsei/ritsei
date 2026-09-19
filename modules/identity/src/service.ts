@@ -10,8 +10,10 @@ import {
   UserAccountCreatedEventPayload,
 } from "./events.ts"
 import {
+  BindExternalSubjectInput,
   CreateUserAccountForTenantInput,
   CreateUserAccountInput,
+  ExternalSubject,
   UpdateUserAccountInput,
   UserAccountId,
   UserAccountService,
@@ -80,6 +82,22 @@ export const makeUserAccountServiceFromStore = <R>(
           : yield* createAndPublish
       },
     )
+    const resolveExternalSubject = Effect.fn("UserAccountService.resolveExternalSubject")(
+      function* (input: unknown) {
+        const decoded = yield* Schema.decodeUnknownEffect(ExternalSubject)(input)
+        return yield* accountStore.resolveExternalSubject(decoded.issuer, decoded.subject)
+      },
+    )
+    const bindExternalSubject = Effect.fn("UserAccountService.bindExternalSubject")(
+      function* (input: unknown) {
+        const decoded = yield* Schema.decodeUnknownEffect(BindExternalSubjectInput)(input)
+        return yield* accountStore.bindExternalSubject(
+          decoded.issuer,
+          decoded.subject,
+          decoded.userAccountId,
+        )
+      },
+    )
     const getById = Effect.fn("UserAccountService.getById")(function* (id: string) {
       return yield* accountStore.getById(yield* decodeUserAccountId(id))
     })
@@ -108,6 +126,8 @@ export const makeUserAccountServiceFromStore = <R>(
     return {
       create,
       createForTenant,
+      resolveExternalSubject,
+      bindExternalSubject,
       getById,
       getByIds,
       getAuthenticationState,

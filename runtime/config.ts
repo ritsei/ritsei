@@ -15,6 +15,31 @@ export type DeploymentProfile = Schema.Schema.Type<typeof DeploymentProfile>
 export const FinancialAuthority = FinancialLedgerAuthority
 export type FinancialAuthority = Schema.Schema.Type<typeof FinancialAuthority>
 
+const AuthenticationProfile = Schema.Literals(["transitional-local", "oidc"])
+type AuthenticationProfile = Schema.Schema.Type<typeof AuthenticationProfile>
+
+export type TransitionalLocalAuthenticationConfiguration = {
+  readonly profile: "transitional-local"
+  readonly userAccountId?: string
+  readonly userAccountEmail?: string
+}
+
+export type OidcAuthenticationConfiguration = {
+  readonly profile: "oidc"
+  readonly issuerUrl: string
+  readonly audience: string
+  readonly clientId: string
+  readonly authorizationEndpoint: string
+  readonly tokenEndpoint: string
+  readonly jwksUri: string
+  readonly redirectUri: string
+  readonly scopes: readonly string[]
+}
+
+export type AuthenticationConfiguration =
+  | TransitionalLocalAuthenticationConfiguration
+  | OidcAuthenticationConfiguration
+
 export type PostgresReadYourWritesRuntimeConfiguration = {
   readonly replicaUrl: string
   readonly placementId: string
@@ -26,6 +51,7 @@ export type PostgresReadYourWritesRuntimeConfiguration = {
 export type RitseiRuntimeConfiguration = Readonly<
   & {
     readonly deploymentProfile: DeploymentProfile
+    readonly authentication?: AuthenticationConfiguration
     readonly postgresReadYourWrites?: PostgresReadYourWritesRuntimeConfiguration
   }
   & (
@@ -49,6 +75,9 @@ export class RuntimeConfigurationFailure extends Schema.TaggedError<RuntimeConfi
       "invalid_tigerbeetle_configuration",
       "missing_postgres_read_your_writes_configuration",
       "invalid_postgres_read_your_writes_configuration",
+      "missing_oidc_configuration",
+      "invalid_oidc_configuration",
+      "missing_authentication_configuration",
     ]),
   },
 ) {}
@@ -58,9 +87,21 @@ export interface RuntimeEnvironment {
 }
 
 const NonEmptyString = Schema.String.check(Schema.isPattern(/\S/))
+const BoundedOidcString = NonEmptyString.pipe(Schema.check(Schema.isMaxLength(4_096)))
 const RawRuntimeConfiguration = Schema.Struct({
   deploymentProfile: DeploymentProfile,
   financialAuthority: FinancialAuthority,
+  authenticationProfile: Schema.optionalKey(AuthenticationProfile),
+  transitionalUserAccountId: Schema.optionalKey(NonEmptyString),
+  transitionalUserAccountEmail: Schema.optionalKey(NonEmptyString),
+  oidcIssuerUrl: Schema.optionalKey(BoundedOidcString),
+  oidcAudience: Schema.optionalKey(BoundedOidcString),
+  oidcClientId: Schema.optionalKey(BoundedOidcString),
+  oidcAuthorizationEndpoint: Schema.optionalKey(BoundedOidcString),
+  oidcTokenEndpoint: Schema.optionalKey(BoundedOidcString),
+  oidcJwksUri: Schema.optionalKey(BoundedOidcString),
+  oidcRedirectUri: Schema.optionalKey(BoundedOidcString),
+  oidcScopes: Schema.optionalKey(BoundedOidcString),
   postgresReadYourWrites: Schema.optionalKey(Schema.Struct({
     replicaUrl: NonEmptyString,
     placementId: NonEmptyString,
@@ -81,6 +122,24 @@ type RawRuntimeConfiguration = Schema.Schema.Type<typeof RawRuntimeConfiguration
 
 const invalid = (reason: RuntimeConfigurationFailure["reason"]) =>
   new RuntimeConfigurationFailure({ reason })
+
+const withoutUndefined = (values: Readonly<Record<string, unknown>>) =>
+  Object.fromEntries(Object.entries(values).filter(([, value]) => value !== undefined))
+
+const parseUrl = (value: string): string | undefined => {
+  try {
+    const url = new URL(value)
+    const normalized = value.trim()
+    const loopback = url.hostname === "127.0.0.1" || url.hostname === "localhost" ||
+      url.hostname === "[::1]" || url.hostname === "::1"
+    return url.username === "" && url.password === "" && url.hash === "" &&
+        (url.protocol === "https:" || (url.protocol === "http:" && loopback))
+      ? normalized
+      : undefined
+  } catch {
+    return undefined
+  }
+}
 
 const parseSafeInteger = (value: string) => {
   if (!/^\d+$/.test(value)) return undefined
@@ -183,6 +242,19 @@ export const parseRuntimeConfiguration = (environment: RuntimeEnvironment) =>
     const raw = {
       deploymentProfile: environment.get("RITSEI_DEPLOYMENT_PROFILE") ?? "entry",
       financialAuthority,
+      oidcScopes: environment.get("RITSEI_OIDC_SCOPES") ?? "openid profile email",
+      ...withoutUndefined({
+        authenticationProfile: environment.get("RITSEI_AUTH_PROFILE"),
+        transitionalUserAccountId: environment.get("RITSEI_TRANSITIONAL_USER_ACCOUNT_ID"),
+        transitionalUserAccountEmail: environment.get("RITSEI_TRANSITIONAL_USER_ACCOUNT_EMAIL"),
+        oidcIssuerUrl: environment.get("RITSEI_OIDC_ISSUER_URL"),
+        oidcAudience: environment.get("RITSEI_OIDC_AUDIENCE"),
+        oidcClientId: environment.get("RITSEI_OIDC_CLIENT_ID"),
+        oidcAuthorizationEndpoint: environment.get("RITSEI_OIDC_AUTHORIZATION_ENDPOINT"),
+        oidcTokenEndpoint: environment.get("RITSEI_OIDC_TOKEN_ENDPOINT"),
+        oidcJwksUri: environment.get("RITSEI_OIDC_JWKS_URI"),
+        oidcRedirectUri: environment.get("RITSEI_OIDC_REDIRECT_URI"),
+      }),
       ...readPostgresReadYourWritesValues(environment),
       ...readTigerBeetleValues(environment, financialAuthority),
     }
@@ -192,9 +264,65 @@ export const parseRuntimeConfiguration = (environment: RuntimeEnvironment) =>
     const postgresReadYourWrites = environment.get("RITSEI_POSTGRES_RYW_ENABLED") === "true"
       ? yield* parsePostgresReadYourWritesConfiguration(decoded.postgresReadYourWrites)
       : undefined
+    if (decoded.authenticationProfile === undefined) {
+      return yield* Effect.fail(invalid("missing_authentication_configuration"))
+    }
+    const authentication: AuthenticationConfiguration = decoded.authenticationProfile ===
+        "transitional-local"
+      ? {
+        profile: "transitional-local",
+        ...(decoded.transitionalUserAccountId === undefined
+          ? {}
+          : { userAccountId: decoded.transitionalUserAccountId }),
+        ...(decoded.transitionalUserAccountEmail === undefined
+          ? {}
+          : { userAccountEmail: decoded.transitionalUserAccountEmail.trim().toLowerCase() }),
+      }
+      : yield* Effect.gen(function* () {
+        const values = [
+          decoded.oidcIssuerUrl,
+          decoded.oidcAudience,
+          decoded.oidcClientId,
+          decoded.oidcAuthorizationEndpoint,
+          decoded.oidcTokenEndpoint,
+          decoded.oidcJwksUri,
+          decoded.oidcRedirectUri,
+        ]
+        if (values.some((value) => value === undefined)) {
+          return yield* Effect.fail(invalid("missing_oidc_configuration"))
+        }
+        const urls = [
+          decoded.oidcIssuerUrl,
+          decoded.oidcAuthorizationEndpoint,
+          decoded.oidcTokenEndpoint,
+          decoded.oidcJwksUri,
+          decoded.oidcRedirectUri,
+        ].map((value) => parseUrl(value!))
+        if (urls.some((value) => value === undefined)) {
+          return yield* Effect.fail(invalid("invalid_oidc_configuration"))
+        }
+        const scopes = (decoded.oidcScopes ?? "openid profile email").split(/\s+/).filter(
+          (scope) => scope.length > 0,
+        )
+        if (scopes.length === 0 || !scopes.includes("openid")) {
+          return yield* Effect.fail(invalid("invalid_oidc_configuration"))
+        }
+        return {
+          profile: "oidc" as const,
+          issuerUrl: urls[0]!,
+          audience: decoded.oidcAudience!,
+          clientId: decoded.oidcClientId!,
+          authorizationEndpoint: urls[1]!,
+          tokenEndpoint: urls[2]!,
+          jwksUri: urls[3]!,
+          redirectUri: urls[4]!,
+          scopes,
+        }
+      })
     if (decoded.financialAuthority === "postgresql") {
       return {
         deploymentProfile: decoded.deploymentProfile,
+        authentication,
         financialAuthority: "postgresql" as const,
         tigerBeetle: undefined,
         ...(postgresReadYourWrites === undefined ? {} : { postgresReadYourWrites }),
@@ -203,6 +331,7 @@ export const parseRuntimeConfiguration = (environment: RuntimeEnvironment) =>
     const tigerBeetle = yield* parseTigerBeetleConfiguration(decoded.tigerBeetle)
     return {
       deploymentProfile: decoded.deploymentProfile,
+      authentication,
       financialAuthority: "tigerbeetle" as const,
       tigerBeetle,
       ...(postgresReadYourWrites === undefined ? {} : { postgresReadYourWrites }),

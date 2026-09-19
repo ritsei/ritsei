@@ -27,6 +27,13 @@ export const makeMemoryAuthLayer = (
       >()
       let nextSessionId = 1
 
+      const findTenantBySlug = Effect.fn("auth.findTenantBySlug")((slug: string) => {
+        const normalized = slug.trim().toLowerCase()
+        return Effect.succeed(
+          [...storedTenants.values()].find((tenant) => tenant.slug === normalized),
+        )
+      })
+
       const createTenant = Effect.fn("auth.createTenant")(function* (input: unknown) {
         const decoded = yield* Schema.decodeUnknownEffect(CreateTenantInput)(input)
         const slug = decoded.slug.trim().toLowerCase()
@@ -77,10 +84,15 @@ export const makeMemoryAuthLayer = (
           session.expiresAt <= clock.currentTimeMillisUnsafe() ||
           disabledUserAccountIds.has(session.userAccountId)
         ) return yield* Effect.fail(new InvalidSessionToken({}))
-        return { userAccountId: session.userAccountId, sessionId: session.sessionId }
+        return {
+          userAccountId: session.userAccountId,
+          sessionId: session.sessionId,
+          authentication: "local" as const,
+        }
       })
 
       const revoke = Effect.fn("auth.revoke")(function* (sessionId: string) {
+        if (sessionId.startsWith("external:")) return
         for (const [token, session] of storedSessions) {
           if (session.sessionId === sessionId) {
             storedSessions.delete(token)
@@ -90,6 +102,12 @@ export const makeMemoryAuthLayer = (
         return yield* Effect.fail(new InvalidSessionToken({}))
       })
 
-      return { createTenant, issueSession, authenticate, revoke } satisfies AuthService
+      return {
+        findTenantBySlug,
+        createTenant,
+        issueSession,
+        authenticate,
+        revoke,
+      } satisfies AuthService
     }),
   )

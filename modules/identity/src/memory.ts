@@ -2,13 +2,20 @@ import * as Effect from "effect/Effect"
 
 import { uuidv7 } from "../../../foundation/mod.ts"
 import type { UserAccount, UserAccountAuthenticationState } from "./contract.ts"
-import { UserAccountAlreadyExists, UserAccountNotFound } from "./errors.ts"
+import {
+  ExternalSubjectAlreadyBound,
+  ExternalSubjectNotFound,
+  UserAccountAlreadyExists,
+  UserAccountNotFound,
+} from "./errors.ts"
 import type { UserAccountStore } from "./store.ts"
 
 export const makeUserAccountMemoryStore = (): UserAccountStore => {
   const stored = new Map<string, UserAccount>()
   const sessionInvalidatedAt = new Map<string, string | null>()
   const emails = new Set<string>()
+  const externalSubjects = new Map<string, string>()
+  const externalSubjectKey = (issuer: string, subject: string) => `${issuer}\u0000${subject}`
   const find = Effect.fn("UserAccountStore.memory.find")(function* (id: string) {
     const userAccount = stored.get(id)
     if (userAccount === undefined) return yield* Effect.fail(new UserAccountNotFound({ id }))
@@ -70,15 +77,47 @@ export const makeUserAccountMemoryStore = (): UserAccountStore => {
     return userAccount
   })
 
+  const resolveExternalSubject = Effect.fn("UserAccountStore.memory.resolveExternalSubject")(
+    function* (issuer: string, subject: string) {
+      const userAccountId = externalSubjects.get(externalSubjectKey(issuer, subject))
+      if (userAccountId === undefined) {
+        return yield* Effect.fail(new ExternalSubjectNotFound({ issuer, subject }))
+      }
+      return yield* find(userAccountId).pipe(
+        Effect.mapError(() => new ExternalSubjectNotFound({ issuer, subject })),
+      )
+    },
+  )
+
+  const bindExternalSubject = Effect.fn("UserAccountStore.memory.bindExternalSubject")(
+    function* (issuer: string, subject: string, userAccountId: string) {
+      const userAccount = yield* find(userAccountId)
+      const key = externalSubjectKey(issuer, subject)
+      const existing = externalSubjects.get(key)
+      if (existing !== undefined && existing !== userAccountId) {
+        return yield* Effect.fail(
+          new ExternalSubjectAlreadyBound({ issuer, subject, userAccountId }),
+        )
+      }
+      externalSubjects.set(key, userAccountId)
+      return userAccount
+    },
+  )
+
   const remove = Effect.fn("UserAccountStore.memory.remove")(function* (id: string) {
     const userAccount = yield* find(id)
     stored.delete(id)
     sessionInvalidatedAt.delete(id)
     emails.delete(userAccount.email)
+    for (const [key, userAccountId] of externalSubjects) {
+      if (userAccountId === id) externalSubjects.delete(key)
+    }
   })
 
   return {
     create,
+    resolveExternalSubject,
+    bindExternalSubject,
     getById: find,
     getByIds,
     getAuthenticationState,

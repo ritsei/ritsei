@@ -20,6 +20,18 @@ export class UserAccountAlreadyExists
     email: LowercaseTrimmedNonEmptyString,
   }) {}
 
+export class ExternalSubjectNotFound extends Schema.TaggedError<ExternalSubjectNotFound>()(
+  "ExternalSubjectNotFound",
+  { issuer: TrimmedNonEmptyString, subject: TrimmedNonEmptyString },
+) {}
+
+export class ExternalSubjectAlreadyBound
+  extends Schema.TaggedError<ExternalSubjectAlreadyBound>()("ExternalSubjectAlreadyBound", {
+    issuer: TrimmedNonEmptyString,
+    subject: TrimmedNonEmptyString,
+    userAccountId: Uuid,
+  }) {}
+
 export class UserAccountNotFound
   extends Schema.TaggedError<UserAccountNotFound>()("UserAccountNotFound", {
     id: Uuid,

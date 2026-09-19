@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm"
-import { check, pgSchema, text, timestamp, unique } from "drizzle-orm/pg-core"
+import { check, foreignKey, pgSchema, text, timestamp, unique, uuid } from "drizzle-orm/pg-core"
 
 import { createdAt, id, updatedAt } from "./common.ts"
 
@@ -28,5 +28,33 @@ export const userAccounts = identitySchema.table(
       sql`(${table.status} = 'active' and ${table.disabledAt} is null) or
         (${table.status} = 'disabled' and ${table.disabledAt} is not null)`,
     ),
+  ],
+)
+
+export const externalSubjectMappings = identitySchema.table(
+  "external_subject_mappings",
+  {
+    id: id(),
+    issuer: text("issuer").notNull(),
+    subject: text("subject").notNull(),
+    userAccountId: uuid("user_account_id").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (table) => [
+    unique("external_subject_mappings_issuer_subject_key").on(table.issuer, table.subject),
+    check(
+      "external_subject_mappings_issuer_check",
+      sql`${table.issuer} = btrim(${table.issuer}) and ${table.issuer} ~ '[^[:space:]]'`,
+    ),
+    check(
+      "external_subject_mappings_subject_check",
+      sql`${table.subject} = btrim(${table.subject}) and ${table.subject} ~ '[^[:space:]]'`,
+    ),
+    foreignKey({
+      columns: [table.userAccountId],
+      foreignColumns: [userAccounts.id],
+      name: "external_subject_mappings_user_account_id_fkey",
+    }).onDelete("cascade"),
   ],
 )

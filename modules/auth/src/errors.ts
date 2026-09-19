@@ -17,3 +17,9 @@ export class SessionUserAccountDisabled
 
 export class InvalidSessionToken
   extends Schema.TaggedError<InvalidSessionToken>()("InvalidSessionToken", {}) {}
+
+export class InvalidExternalAssertion
+  extends Schema.TaggedError<InvalidExternalAssertion>()("InvalidExternalAssertion", {}) {}
+
+export class ExternalProviderUnavailable
+  extends Schema.TaggedError<ExternalProviderUnavailable>()("ExternalProviderUnavailable", {}) {}

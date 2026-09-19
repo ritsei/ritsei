@@ -36,6 +36,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ritsei
       RITSEI_DEPLOYMENT_PROFILE: entry
       RITSEI_FINANCIAL_AUTHORITY: postgresql
+      RITSEI_AUTH_PROFILE: transitional-local
+      RITSEI_TRANSITIONAL_USER_ACCOUNT_EMAIL: admin@example.test
       PORT: "8000"
     volumes:
       - ../..:/app
@@ -53,6 +55,8 @@ services:
       DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ritsei
       RITSEI_DEPLOYMENT_PROFILE: entry
       RITSEI_FINANCIAL_AUTHORITY: postgresql
+      RITSEI_AUTH_PROFILE: transitional-local
+      RITSEI_TRANSITIONAL_USER_ACCOUNT_EMAIL: admin@example.test
       WORKER_TENANT_ID: 00000000-0000-4000-8000-000000000001
       WORKER_ID: entry-accounting-worker
     volumes:

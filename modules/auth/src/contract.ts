@@ -2,6 +2,12 @@ import * as Context from "effect/Context"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 
+export { ExternalIdentity, IdentityProvider } from "./provider.ts"
+export type {
+  ExternalIdentity as ExternalIdentityType,
+  IdentityProvider as IdentityProviderShape,
+} from "./provider.ts"
+
 const PositiveSeconds = Schema.Int.check(Schema.isGreaterThan(0))
 const NonBlankString = Schema.String.check(Schema.isPattern(/\S/))
 const Uuid = Schema.String.check(Schema.isUUID())
@@ -27,6 +33,9 @@ export const Session = Schema.Struct({
 export const Principal = Schema.Struct({
   userAccountId: Schema.String,
   sessionId: Schema.String,
+  authentication: Schema.optionalKey(Schema.Literals(["local", "external"])),
+  externalIssuer: Schema.optionalKey(Schema.String),
+  externalSubject: Schema.optionalKey(Schema.String),
 })
 
 export type Tenant = Schema.Schema.Type<typeof Tenant>
@@ -39,6 +48,12 @@ export interface IssuedSession {
 }
 
 export interface AuthService {
+  readonly findTenantBySlug: (
+    slug: string,
+  ) => Effect.Effect<
+    Tenant | undefined,
+    import("../../../foundation/mod.ts").DatabaseFailure
+  >
   readonly createTenant: (
     input: unknown,
   ) => Effect.Effect<
@@ -60,7 +75,10 @@ export interface AuthService {
     token: string,
   ) => Effect.Effect<
     Principal,
-    import("./errors.ts").InvalidSessionToken | import("../../../foundation/mod.ts").DatabaseFailure
+    | import("./errors.ts").InvalidSessionToken
+    | import("./errors.ts").InvalidExternalAssertion
+    | import("./errors.ts").ExternalProviderUnavailable
+    | import("../../../foundation/mod.ts").DatabaseFailure
   >
   readonly revoke: (
     sessionId: string,

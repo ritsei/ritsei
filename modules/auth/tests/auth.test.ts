@@ -35,7 +35,10 @@ describe("auth contract", () => {
     withAuth(Effect.gen(function* () {
       const auth = yield* AuthService
       const issued = yield* auth.issueSession({ userAccountId: "user-account-1", ttlSeconds: 60 })
-      assert.strictEqual((yield* auth.authenticate(issued.token)).userAccountId, "user-account-1")
+      const principal = yield* auth.authenticate(issued.token)
+      assert.strictEqual(principal.userAccountId, "user-account-1")
+      assert.strictEqual(principal.authentication, "local")
+      yield* auth.revoke("external:stateless-session")
       yield* auth.revoke(issued.session.id)
       assert.instanceOf(yield* Effect.flip(auth.authenticate(issued.token)), InvalidSessionToken)
     })))
