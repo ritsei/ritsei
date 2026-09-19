@@ -28,6 +28,8 @@
 >   [`../decisions/0057-define-layered-tanstack-frontend-engine-boundaries.md`](../decisions/0057-define-layered-tanstack-frontend-engine-boundaries.md)
 > - Solid compiler boundary: [`../decisions/0049-keep-solid-compiler-at-rendering-boundary.md`](../decisions/0049-keep-solid-compiler-at-rendering-boundary.md)
 > - Authorization architecture: [`./authorization.md`](./authorization.md)
+> - Sales architecture: [`./sales.md`](./sales.md)
+> - Financial ledger authority: [`./financial-ledger.md`](./financial-ledger.md)
 > - Identity and principals: [`./identity-and-principals.md`](./identity-and-principals.md)
 > - HTTP API boundary: [`./api.md`](./api.md)
 > - Source-of-truth and derived-capability non-interference:
@@ -753,6 +755,89 @@ Presentation components must not own:
 - idempotency rules.
 
 These belong to the backend domain or explicit shared contracts.
+
+## Situation-oriented operational UI
+
+RITSEI uses a **role-aware, situation-oriented operational UI**. It combines task-centered,
+process-centered, business-object, and exception-aware interaction models without making any one
+of those terms the complete product category. The phrase is RITSEI product vocabulary: it draws on
+those established ideas and case-management-like work without claiming compliance with a single
+external standard. The user should not have to discover the correct application before
+understanding what needs attention; the interface should expose the current operational situation
+and the commands that can safely advance it.
+
+An operational situation is a frontend/projection composition, not a domain entity or source of
+truth:
+
+```text
+Operational Situation
+├── related business objects
+├── current process state
+├── evidence and history
+├── constraints, risks, and exceptions
+└── eligible domain commands
+```
+
+Predictable work may be presented through process and business-object lifecycles. Evolving or
+exception-heavy work may use case-management-like composition. These are presentation and
+coordination choices; the owning domain contracts remain authoritative for facts, authorization,
+and invariants. The frontend may show an eligible command and request it, but only the backend
+owning domain authorizes and commits the business fact.
+
+RITSEI uses a hybrid shell, but not a 50/50 split:
+
+```text
+GLOBAL STRUCTURE
+  persistent collapsible sidebar
+
+GLOBAL OPERATING CONTEXT
+  thin topbar: tenant, company, location, fiscal context, search, identity, utilities
+
+DOMAIN
+  local navigation inside the active workspace
+
+BUSINESS CONTEXT
+  contextual page or object header: identity, lifecycle, impact, commands
+
+SITUATION
+  content: evidence, dependencies, process state, risks, and history
+
+ACTION
+  public domain commands through the CommandSurface pattern
+```
+
+The navigation rules are:
+
+- The **sidebar answers “where am I?”** and contains stable landmarks, not every record type or
+  action. Its default landmarks are `My Work`, `Attention`, broad `Operations` areas, `Processes`,
+  and `Analytics`.
+- The **topbar answers “under which operating context am I working?”** It carries global scope and
+  utilities, but must not become a second application menu or a collection of hidden dropdowns.
+- **Local navigation answers “which part of this domain workspace?”** It belongs inside the active
+  area, for example `Overview`, `Purchase Orders`, `Suppliers`, `Receipts`, and `Exceptions`.
+- The **contextual page/object header answers “what am I working on?”** It separates business-object
+  identity and lifecycle from application chrome and places the primary domain actions nearby.
+- **Content answers “what is happening?”** It presents the situation, evidence, relationships,
+  constraints, and process progress.
+- **Commands answer “what can I do?”** They invoke typed public operations; they do not mutate
+  authoritative state locally.
+
+The sidebar MUST be collapsible rather than permanently icon-only. Expanded and collapsed states
+must preserve labels, keyboard access, current-location indication, and accessible names. A shortcut
+such as `⌘B` MAY supplement an explicit toggle; hover or focus expansion MAY improve discoverability
+but MUST NOT be the only way to recover labels. Initial shell density targets are approximately:
+
+```text
+Global topbar       48px
+Context header      56–72px
+Local navigation    40px
+Sidebar expanded    220–240px
+Sidebar collapsed   56–64px
+```
+
+The shell must protect content width for dense tables, financial reports, ledgers, bills of
+materials, planning surfaces, and Process Studio. Avoid stacking a large sidebar, large header,
+breadcrumbs, tabs, toolbars, and filters when one semantic layer can carry the same information.
 
 ## Process Studio UI
 

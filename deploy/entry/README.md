@@ -17,6 +17,12 @@ The runtime selectors are explicit:
 
 - `RITSEI_DEPLOYMENT_PROFILE=entry`
 - `RITSEI_FINANCIAL_AUTHORITY=postgresql`
+- `RITSEI_AUTH_PROFILE=transitional-local`
+- `RITSEI_TRANSITIONAL_USER_ACCOUNT_EMAIL=admin@example.test`
+
+The local auth profile is explicit in Compose. Run the trusted bootstrap command against the
+reachable database before using the local sign-in button; it creates the account, tenant, and
+initial ERP authority.
 
 For a production deployment, use an image built from a reviewed source revision and replace the
 example database credentials through the deployment secret mechanism. Do not add TigerBeetle

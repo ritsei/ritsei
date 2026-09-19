@@ -14,8 +14,7 @@
 > **Does not own:** backend authorization, business invariants, domain state, deployment topology,
 > or mandatory WebGPU/cartographic rendering.
 >
-> **Detailed semantics belong to:**
-> [`../architecture/frontend.md`](../architecture/frontend.md) and
+> **Detailed semantics belong to:** [`../architecture/frontend.md`](../architecture/frontend.md) and
 > [`../architecture/design-system.md`](../architecture/design-system.md).
 >
 > **Related documents**
@@ -111,8 +110,8 @@ shared contracts rather than feature-local vendor usage.
 ### F3 — Accessibility and performance (`frontend.accessibility-performance`)
 
 Validate one representative business workflow end to end. Cover keyboard and screen-reader behavior,
-focus and error handling, contrast/high contrast, reduced motion, zoom/localization,
-route splitting, bundle size, interaction latency, and long-session stability.
+focus and error handling, contrast/high contrast, reduced motion, zoom/localization, route
+splitting, bundle size, interaction latency, and long-session stability.
 
 **Exit evidence:**
 
@@ -123,22 +122,51 @@ route splitting, bundle size, interaction latency, and long-session stability.
 
 ## Current implementation progress
 
-As of September 11, 2026, the currently feasible frontend slice is implemented without claiming
+As of September 13, 2026, the currently feasible frontend slice is implemented without claiming
 roadmap completion:
 
 - **Compatibility spike:** Vite, SolidJS 2, Panda CSS, the generated semantic recipe surface,
-  TanStack Solid Query, Playwright, and axe run through the web-owned manifest plus shared repository
-  tooling. The Kobalte Solid 2 probe bundles successfully with `@kobalte/core@2.0.0-alpha.1`, and the
-  browser probe covers the exercised Dialog contract. The package's RC peer-range mismatch is
-  explicitly accepted as `approved_with_risk` with exact pins and rollback; Dialog is active only
-  through the tested RITSEI `ConfirmDialog` wrapper in the production UI.
-- **F0:** `deno task --cwd apps/web build` produces the separate SPA, and the browser shell test verifies boot,
-  routing, invalid connection input, theme switching, responsive layout, and in-memory credentials.
-- **F1/F2 vertical slice:** generated browser contracts preserve the canonical Identity schemas and
-  HTTP paths. The connected User Accounts screen owns Query cache policy, typed loading/error states,
-  tenant-scoped headers, email editing, refetch, focus restoration, and unknown-outcome recovery.
-  The shared UI surface is limited to the controls, semantic recipes, and layouts proven by this
-  workflow; domain presentation remains under `features/identity/`.
+  TanStack Solid Query, Playwright, and axe run through the web-owned manifest plus shared
+  repository tooling. The Kobalte Solid 2 probe bundles successfully with
+  `@kobalte/core@2.0.0-alpha.1`, and the browser probe covers the exercised Dialog contract. The
+  package's RC peer-range mismatch is explicitly accepted as `approved_with_risk` with exact pins
+  and rollback; Dialog is active only through the tested RITSEI confirmation, account-creation,
+  Party-creation, and Access-administration wrappers. TanStack Solid Query is active. TanStack Solid
+  Table and Form remain unactivated because the current published adapters still import Solid 1
+  paths or APIs that the pinned SolidJS 2 runtime intentionally does not expose; the application
+  does not add an unreviewed compatibility shim or downgrade Solid to hide that gap.
+- **F0:** `deno task --cwd apps/web build` produces the separate SPA, and the browser shell test
+  verifies boot, routing, invalid connection input, theme switching, responsive layout, and
+  in-memory credentials.
+- **F1/F2 vertical slices:** generated browser contracts preserve the canonical Identity, Party, and
+  Authorization schemas and HTTP paths. The connected User Accounts workspace supports
+  tenant-filtered list and detail reads, account creation, and email updates. The connected
+  Procurement workspace supports tenant-scoped supplier-account, purchase-order, and receipt reads,
+  server-side filters, supplier-account creation, draft order creation, confirmation, cancellation,
+  and bounded receipt commands. The connected Inventory workspace supports bounded warehouse/item
+  master reads, stock positions, reservations, transfers, movement history, warehouse and item
+  creation, receipt/correction commands, reservation lifecycle commands, and transfer lifecycle
+  commands without local stock authority. The connected Sales workspace supports bounded customer,
+  quotation, and sales-order reads, server-side filters, customer/quotation/order creation, order
+  confirmation and cancellation, detail projections, and unknown-outcome recovery without local
+  business authority. The connected Accounting workspace supports bounded legal-entity
+  configuration, chart-of-accounts, period, revenue-profile, and posted-journal evidence reads,
+  exact two-decimal journal presentation, backend-authorized configuration, account,
+  revenue-profile, period, and journal commands, and explicit financial-engine cutover gating. The
+  connected Process Studio surface now provides backend-derived catalog discovery, structural draft
+  editing, static validation, runtime/inbox/history monitoring, and authorized recovery controls;
+  detailed readiness remains owned by the Process Studio roadmap. The connected Parties workspace
+  supports bounded list/search/filter, composed detail, Party creation, role and identifier
+  assignment, legal-entity and branch creation, typed legal-entity relationships, bounded
+  related-party paths, and user-account representation lifecycle commands. The connected Access
+  workspace supports bounded tenant-membership list/detail reads, server-side account-ID/status
+  filtering over the first 200 matching records, membership lifecycle commands, direct-grant and
+  capability-catalog reads, and the existing tenant-wide capability grant command. All workspaces
+  preserve tenant-scoped headers, backend authorization, typed loading/error states, refetch, and
+  unknown-outcome recovery. Global account disable, enable, and permanent removal remain trusted
+  Identity operations and are not exposed to tenant administrators, as required by ADR-0030. Party
+  rename/delete, role removal, identifier detach, and relationship deactivation remain absent
+  because no public Party contract owns them. Domain presentation remains under its feature owner.
 - **F3 evidence:** the representative-workflow browser checks cover axe, keyboard focus, reduced
   motion, forced-colors visibility, narrow layout, validation focus, 200% zoom, route splitting,
   bundle limits, interaction latency, semantic fallback, and bounded repeated use.
@@ -147,9 +175,10 @@ The F2 evidence manifest records the automated design-system checks as passed. T
 manifest records the representative-workflow checks and bounded local thresholds as passed. The
 Kobalte compatibility risk is accepted only for the exact pinned dependency and does not globally
 approve unused or untested primitives; the current production-approval list contains only the tested
-Dialog wrapper. This remains repository-local mechanical evidence and does not claim production
-SLOs, full assistive-technology
-certification, or production deployment approval.
+Dialog wrapper usage paths for shell confirmation, User Accounts, Parties, Access, Procurement,
+Inventory, Sales, Accounting, and Process Studio. This remains repository-local mechanical evidence
+and does not claim production SLOs, full assistive-technology certification, or production
+deployment approval.
 
 ## Conditional stages (not registered)
 
@@ -160,13 +189,13 @@ mock/headless behavior, bounded frame and power use, and recovery on renderer fa
 ## Measures
 
 | Measure                                      | Target before frontend support claim |
-| -------------------------------------------- | ----------------------------------- |
-| `frontend.*` mechanical gates                | all four pass                       |
-| frontend imports of backend implementations  | `0`                                 |
-| browser-side business mutations              | `0`                                 |
-| critical workflow keyboard blockers           | `0`                                 |
-| critical workflow semantic fallback failures | `0`                                 |
-| unbounded render loop for static content     | `0`                                 |
+| -------------------------------------------- | ------------------------------------ |
+| `frontend.*` mechanical gates                | all four pass                        |
+| frontend imports of backend implementations  | `0`                                  |
+| browser-side business mutations              | `0`                                  |
+| critical workflow keyboard blockers          | `0`                                  |
+| critical workflow semantic fallback failures | `0`                                  |
+| unbounded render loop for static content     | `0`                                  |
 
 The live track counters are emitted by `deno task roadmap:measure`; route performance and
 accessibility thresholds remain reviewed workflow evidence.

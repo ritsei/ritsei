@@ -52,6 +52,7 @@ create a second independent definition.
 | External identity, authentication, principals, sessions, and revocation | [`./architecture/identity-and-principals.md`](./architecture/identity-and-principals.md) |
 | HTTP authentication, tenant context, transport authorization, and API security boundary | [`./architecture/api.md`](./architecture/api.md) |
 | Procurement ownership, Supplier Accounts, Purchase Orders, and receipt activation gates | [`./architecture/procurement.md`](./architecture/procurement.md) |
+| Sales customers, quotations, Sales Orders, and order lifecycle | [`./architecture/sales.md`](./architecture/sales.md) |
 | Events and messaging | [`./architecture/pgque-messaging.md`](./architecture/pgque-messaging.md) |
 | External integration surface and connector protocols | [`./architecture/integration-architecture.md`](./architecture/integration-architecture.md) |
 | Document snapshots, Document AST, renderer capabilities, template/artifact versioning, and rendering workload security | [`./architecture/document-rendering.md`](./architecture/document-rendering.md) |

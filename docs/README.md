@@ -34,6 +34,7 @@
 - [`./architecture/identity-and-principals.md`](./architecture/identity-and-principals.md)
 - [`./architecture/api.md`](./architecture/api.md)
 - [`./architecture/procurement.md`](./architecture/procurement.md)
+- [`./architecture/sales.md`](./architecture/sales.md)
 - [`./architecture/durable-execution.md`](./architecture/durable-execution.md)
 - [`./architecture/process-studio.md`](./architecture/process-studio.md)
 - [`./architecture/pgque-messaging.md`](./architecture/pgque-messaging.md)
@@ -83,6 +84,9 @@
 ## Deployment Notes
 
 - [`./deployment/README.md`](./deployment/README.md)
+- [`./operations/authentication.md`](./operations/authentication.md)
+- [`./operations/frontend-capability-coverage.md`](./operations/frontend-capability-coverage.md)
+- [`./operations/frontend-implementation.md`](./operations/frontend-implementation.md)
 - [`./financial/staging-readiness-plan.md`](./financial/staging-readiness-plan.md)
 - [`./financial/staging-topology.md`](./financial/staging-topology.md)
 - [`./financial/staging-infrastructure-selection.md`](./financial/staging-infrastructure-selection.md)

@@ -1,7 +1,7 @@
 {
   "status": "approved_with_risk",
   "reviewer": "RITSEI frontend implementation",
-  "reviewDate": "2026-09-12",
+  "reviewDate": "2026-09-13",
   "checks": {
     "kobalte-solid2-compatibility": {
       "status": "approved_with_risk",
@@ -42,8 +42,56 @@
           {
             "name": "Dialog",
             "contract": "apps/web/src/ui/patterns/confirm-dialog.tsx",
-            "usage": "apps/web/src/app/app.tsx",
+            "usage": "apps/web/src/app/shell.tsx",
             "browserTest": "tests/frontend/kobalte.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/identity/accounts.tsx",
+            "browserTest": "tests/frontend/workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/party/parties.tsx",
+            "browserTest": "tests/frontend/party-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/authorization/access.tsx",
+            "browserTest": "tests/frontend/access-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/procurement/procurement.tsx",
+            "browserTest": "tests/frontend/procurement-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/inventory/inventory.tsx",
+            "browserTest": "tests/frontend/inventory-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/sales/sales.tsx",
+            "browserTest": "tests/frontend/sales-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/accounting/accounting.tsx",
+            "browserTest": "tests/frontend/accounting-workflow.test.ts"
+          },
+          {
+            "name": "Dialog",
+            "contract": "apps/web/src/ui/primitives/dialog.tsx",
+            "usage": "apps/web/src/features/process-studio/process.tsx",
+            "browserTest": "tests/frontend/process-workflow.test.ts"
           }
         ]
       }

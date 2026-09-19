@@ -2,10 +2,12 @@
   "$schema": "./node_modules/fallow/schema.json",
   "entry": [
     "runtime/api/mod.ts",
+    "runtime/auth/bootstrap.ts",
     "runtime/migrator/mod.ts",
     "runtime/migrator/p0-backfill.ts",
     "runtime/worker/mod.ts",
     "apps/web/src/features/process-studio/index.ts",
+    "apps/web/src/experiments/solid-effect/src/main.tsx",
     "apps/**/*.test.ts",
     "apps/**/*.test.tsx",
     "foundation/mod.ts",
@@ -34,11 +36,14 @@
     ".auto/**"
   ],
   "ignoreDependencies": [
+    "@axe-core/playwright",
+    "@effect/vitest",
     "@effect/platform-node-shared",
     "@effect/sql-pg",
     "@std/fs",
     "@std/media-types",
-    "@std/streams"
+    "@std/streams",
+    "effect"
   ],
   "ignoreExports": [
     {
@@ -48,6 +53,32 @@
     {
       "file": "modules/authorization/src/contract.ts",
       "exports": ["Capability"]
+    },
+    {
+      "file": "modules/accounting/src/contract.ts",
+      "exports": [
+        "ListAccountingConfigurationsInput",
+        "ListAccountsInput",
+        "ListAccountingPeriodsInput",
+        "ListRevenuePostingProfilesInput",
+        "ListJournalEntriesInput"
+      ]
+    },
+    {
+      "file": "modules/authorization/src/capabilities.ts",
+      "exports": ["CapabilityScope", "CapabilityStability"]
+    },
+    {
+      "file": "modules/auth/src/contract.ts",
+      "exports": ["ExternalIdentityType", "IdentityProviderShape"]
+    },
+    {
+      "file": "modules/inventory/src/contract.ts",
+      "exports": ["StockMovementKind"]
+    },
+    {
+      "file": "modules/procurement/src/contract.ts",
+      "exports": ["PurchaseOrderStatus"]
     }
   ],
   "rulePacks": ["./tooling/fallow/rules/ritsei-static-policy.json"],

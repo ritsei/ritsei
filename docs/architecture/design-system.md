@@ -223,6 +223,19 @@ MasterDetail
 CommandSurface
 ```
 
+`OperationalWorkspace` is the default composition for RITSEI's situation-oriented screens. The
+frontend operating model is owned by [`frontend.md`](./frontend.md#situation-oriented-operational-ui);
+this document owns the reusable pattern contract. An `OperationalWorkspace` SHOULD compose:
+
+- local navigation for the active domain area;
+- a contextual page or object header with identity, lifecycle, and impact;
+- evidence, dependencies, process progress, constraints, and history;
+- `ExceptionInvestigation` when a blocked, critical, or attention state needs explanation; and
+- `CommandSurface` for typed, backend-authorized business actions.
+
+The global sidebar and topbar remain application-shell responsibilities. They provide stable
+landmarks and operating context, not record-level menus or business-object mutation controls.
+
 A Product Pattern MUST answer:
 
 - where identity appears;
@@ -1041,12 +1054,58 @@ Forms MUST expose labels, validation, error association, keyboard order, and rec
 
 ### Navigation
 
+RITSEI uses a hybrid navigation shell. This is a semantic split, not a 50/50 compromise:
+
+```text
+Sidebar       → global structure and stable landmarks
+Topbar        → global operating context and utilities
+Local nav     → active domain area
+Context header→ current object or operational situation
+Commands      → current domain actions
+```
+
 The sidebar is a valid cartographic anchor:
 
 ```text
 Topo Ink + very subtle contour field
 active item → terrain-blue region
 ```
+
+The sidebar MUST remain broad and stable. It MAY contain `My Work`, `Attention`, broad Operations
+areas, `Processes`, and `Analytics`, but MUST NOT become a database table of contents with every
+record type, filter, or action. Detail navigation belongs in the active workspace as local tabs or
+sections.
+
+The topbar MUST remain thin and utility-oriented. It carries tenant, company, location, fiscal
+context, search, notifications, help, and identity. It MUST NOT carry the complete application
+navigation or business-object commands. Business-object identity, lifecycle, and primary actions
+belong in the contextual page/object header below the topbar.
+
+The shell follows this reading order:
+
+```text
+Sidebar       → where am I?
+Topbar        → under which operating context am I working?
+Page header   → what am I working on?
+Content       → what is happening?
+Commands      → what can I do?
+```
+
+The sidebar MUST be collapsible rather than permanently icon-only. Expanded and collapsed states
+must preserve labels, keyboard access, current-location indication, and accessible names. Initial
+shell targets are approximately:
+
+```text
+Global topbar       48px
+Context header      56–72px
+Local navigation    40px
+Sidebar expanded    220–240px
+Sidebar collapsed   56–64px
+```
+
+The shell must protect content width for dense enterprise tables, financial reports, ledgers, bills
+of materials, planning surfaces, and Process Studio. Avoid stacking a large sidebar, large header,
+breadcrumbs, tabs, toolbars, and filters when one semantic layer can carry the same information.
 
 Contour contrast MUST remain low enough that navigation labels and current location dominate.
 

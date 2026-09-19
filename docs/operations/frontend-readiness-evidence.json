@@ -1,17 +1,26 @@
 {
   "status": "passed",
   "reviewer": "RITSEI frontend implementation",
-  "reviewDate": "2026-09-11",
+  "reviewDate": "2026-09-14",
   "workflow": {
-    "name": "connection and responsive shell",
-    "test": "apps/web/src/ui/accessibility.test.ts",
+    "name": "connection, responsive shell, User Accounts, Party, Authorization, Procurement, Inventory, Sales, Accounting, and Process Studio administration",
+    "test": "tests/frontend/workflow.test.ts",
+    "additionalTests": [
+      "tests/frontend/party-workflow.test.ts",
+      "tests/frontend/access-workflow.test.ts",
+      "tests/frontend/procurement-workflow.test.ts",
+      "tests/frontend/inventory-workflow.test.ts",
+      "tests/frontend/sales-workflow.test.ts",
+      "tests/frontend/accounting-workflow.test.ts",
+      "tests/frontend/process-workflow.test.ts"
+    ],
     "environment": "local Vite production build in headless Chromium",
-    "iterations": 12
+    "iterations": 15
   },
   "measurements": {
-    "javascriptChunks": 6,
-    "largestJavascriptChunkBytes": 112094,
-    "stylesheetBytes": 30054,
+    "javascriptChunks": 16,
+    "largestJavascriptChunkBytes": 167962,
+    "stylesheetBytes": 39961,
     "interactionLatencyThresholdMs": 200,
     "zoom": "200% control visibility preserved at 390px viewport",
     "accessibility": "axe WCAG 2A/AA and semantic role/label assertions passed"

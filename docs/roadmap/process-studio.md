@@ -39,6 +39,18 @@ The designer is a projection over validated runtime semantics. It does not execu
 authorization, or create an autonomous agent path. Numeric milestone labels are historical roadmap
 identifiers, not product SemVer.
 
+## Current bounded delivery slice (September 13, 2026)
+
+The repository now provides the connected Process Studio surface at `/processes`: backend-derived
+public catalog discovery, structural Process IR editing, local and backend validation, runtime and
+workflow monitoring, operator inbox/history projections, and authorized revision-safe retry,
+compensation, and manual-recovery controls. The browser uses generated contracts, tenant/bearer
+transport, response validation, and non-optimistic mutation recovery; it cannot grant capabilities,
+release definitions, execute providers, or invoke domain commands directly. The focused
+implementation checks pass locally, while the live `process.*` roadmap gates remain dependency-open
+until broader prerequisite gates complete; production release, deployment approval, durable-engine
+activation, and broader operational rehearsal remain governed by their existing evidence gates.
+
 ## Pre-0.8 Gate
 
 **Registry gate:** `process.pre08`
@@ -93,8 +105,8 @@ prompt, dynamic action, or nondeterministic AI binding.
 
 Before operational recovery can claim safe leased work, enforce a monotonic generation at the actual
 side-effect mutation boundary. A lease capability token proves possession only; the fencing
-generation proves freshness within an explicit shared fence scope. The idempotency identity remains separate
-from fencing.
+generation proves freshness within an explicit shared fence scope. The idempotency identity remains
+separate from fencing.
 
 **Exit:** concurrent claims receive distinct generations, stale-writer rejection occurs before side
 effects, the generation cannot reset or decrease, and the shared-scope tests cover lease expiry,
@@ -148,14 +160,14 @@ Process Studio architecture and ADR-0063.
 
 ## Measures
 
-| Measure                                         | Target                                       |
-| ----------------------------------------------- | -------------------------------------------- |
+| Measure                                         | Target                                        |
+| ----------------------------------------------- | --------------------------------------------- |
 | `process.*` mechanical gates                    | all seven pass before governed-release review |
-| deterministic IR equivalence                    | `100%` between visual and structured editors |
-| browser-side business mutation                  | `0`                                          |
-| unregistered or unauthorized executable actions | `0`                                          |
-| running instances with floating versions        | `0`                                          |
-| unresolved recovery/compensation paths          | `0` for released processes                   |
+| deterministic IR equivalence                    | `100%` between visual and structured editors  |
+| browser-side business mutation                  | `0`                                           |
+| unregistered or unauthorized executable actions | `0`                                           |
+| running instances with floating versions        | `0`                                           |
+| unresolved recovery/compensation paths          | `0` for released processes                    |
 
 `process_studio_mechanical_gates_remaining` is the live roadmap metric. The other rows are
 release-evidence requirements, not separately emitted counters. These gates do not replace

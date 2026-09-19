@@ -8,12 +8,16 @@
 > - Search architecture: [`./search-architecture.md`](./search-architecture.md)
 > - Analytics architecture: [`./analytics-architecture.md`](./analytics-architecture.md)
 > - Workload isolation: [`./workload-isolation.md`](./workload-isolation.md)
-> - Authorization ADR: [`../decisions/0006-use-capability-based-authorization.md`](../decisions/0006-use-capability-based-authorization.md)
-> - User-account lifecycle and tenant membership: [`../decisions/0030-user-account-lifecycle-and-tenant-membership.md`](../decisions/0030-user-account-lifecycle-and-tenant-membership.md)
-> - Capability naming: [`../decisions/0031-capability-naming-and-business-verb-conventions.md`](../decisions/0031-capability-naming-and-business-verb-conventions.md)
+> - Authorization ADR:
+>   [`../decisions/0006-use-capability-based-authorization.md`](../decisions/0006-use-capability-based-authorization.md)
+> - User-account lifecycle and tenant membership:
+>   [`../decisions/0030-user-account-lifecycle-and-tenant-membership.md`](../decisions/0030-user-account-lifecycle-and-tenant-membership.md)
+> - Capability naming:
+>   [`../decisions/0031-capability-naming-and-business-verb-conventions.md`](../decisions/0031-capability-naming-and-business-verb-conventions.md)
 > - Plugin trust model: [`./plugin-architecture.md`](./plugin-architecture.md)
 > - Process Studio: [`./process-studio.md`](./process-studio.md)
-> - Process governance ADR: [`../decisions/0020-adopt-capability-release-and-runtime-governance.md`](../decisions/0020-adopt-capability-release-and-runtime-governance.md)
+> - Process governance ADR:
+>   [`../decisions/0020-adopt-capability-release-and-runtime-governance.md`](../decisions/0020-adopt-capability-release-and-runtime-governance.md)
 > - Governed AI recommendation and agent boundary:
 >   [`../decisions/0063-define-governed-ai-recommendation-and-agent-boundary.md`](../decisions/0063-define-governed-ai-recommendation-and-agent-boundary.md)
 > - Identity and principals: [`./identity-and-principals.md`](./identity-and-principals.md)
@@ -36,12 +40,12 @@ The authorization system must be:
 - fast on normal request paths;
 - independent of Redis as a source of truth.
 
-Authentication integrations may include OIDC, SAML, SCIM, LDAP, Active
-Directory, MFA, and passkeys. Authentication does not replace authorization.
+Authentication integrations may include OIDC, SAML, SCIM, LDAP, Active Directory, MFA, and passkeys.
+Authentication does not replace authorization.
 
 Search rank, analytic metrics, projection membership, cached results, embeddings, and external
-provider ACLs do not grant RITSEI capabilities. Search returns candidates; current visibility and every business action are
-revalidated by the owning domain. Detailed search behavior is owned by
+provider ACLs do not grant RITSEI capabilities. Search returns candidates; current visibility and
+every business action are revalidated by the owning domain. Detailed search behavior is owned by
 [`search-architecture.md`](./search-architecture.md).
 
 ## Model
@@ -83,11 +87,11 @@ scopes, SoD, tenant isolation, domain policy, or business facts. Domains never c
 directly, and public contracts never expose provider types.
 
 Tenant membership is separate from capability grants. A membership may be `active` or `suspended`;
-only an active membership can authorize a capability. Removing a membership removes its tenant-scoped
-grants but does not delete the global `UserAccount`.
+only an active membership can authorize a capability. Removing a membership removes its
+tenant-scoped grants but does not delete the global `UserAccount`.
 
-Roles bundle capabilities but do not make the final decision. Scope is metadata on a grant or policy,
-not part of the role or capability identifier.
+Roles bundle capabilities but do not make the final decision. Scope is metadata on a grant or
+policy, not part of the role or capability identifier.
 
 ## Authorization decision order
 
@@ -105,17 +109,17 @@ Identity
 ```
 
 The effective permission matrix is the cheap coarse-grained gate. Role and grant changes compile
-into a versioned matrix; membership suspension, revocation, or policy changes invalidate the affected
-matrix entries. A stale matrix cannot authorize sensitive work. The matrix is necessary but does not
-prove access to a particular object. Domain policy remains the owner of business validity such as
-amount, accounting period, inventory state, credit limit, or approval limit.
+into a versioned matrix; membership suspension, revocation, or policy changes invalidate the
+affected matrix entries. A stale matrix cannot authorize sensitive work. The matrix is necessary but
+does not prove access to a particular object. Domain policy remains the owner of business validity
+such as amount, accounting period, inventory state, credit limit, or approval limit.
 
 ## Current implementation versus target architecture
 
 The current repository baseline primarily proves active tenant membership, direct capability grants,
 deny-by-default checks, and PostgreSQL-backed authorization. The target architecture documented here
-adds role compilation, scoped grants, an effective permission matrix, relationship/object evaluation,
-first-class SoD, machine/delegated principal context, and explainable decision evidence.
+adds role compilation, scoped grants, an effective permission matrix, relationship/object
+evaluation, first-class SoD, machine/delegated principal context, and explainable decision evidence.
 
 Target documentation is not implementation evidence. Each target layer must gain its own public
 contract, failure mapping, invariant tests, and activation gate before production use.
@@ -130,8 +134,16 @@ accounting.invoice.submit
 accounting.invoice.approve
 accounting.invoice.post
 accounting.invoice.reverse
-inventory.stock.reserve
+inventory.warehouse.read
+inventory.warehouse.create
+inventory.item.read
+inventory.item.create
+inventory.stock.read
+inventory.stock.receive
 inventory.stock.adjust
+inventory.stock.reserve
+inventory.stock.release
+inventory.stock.fulfill
 inventory.stock_transfer.create
 inventory.stock_transfer.confirm
 inventory.stock_transfer.complete
@@ -139,12 +151,15 @@ authorization.role.assign
 ```
 
 Use explicit lifecycle or controlled verbs where the business effect differs. Ordinary `create`,
-`read`, or `update` remains acceptable when it accurately names one coherent owner-controlled action.
-Broad `manage`, `write`, `admin`, `full_access`, and `execute` capabilities are forbidden by ADR-0031.
+`read`, or `update` remains acceptable when it accurately names one coherent owner-controlled
+action. Broad `manage`, `write`, `admin`, `full_access`, and `execute` capabilities are forbidden by
+ADR-0031.
 
 Financial staging evidence deliberately separates `accounting.financial_evidence.record` from
 `accounting.financial_evidence.read`; recording binds the evidence operator to the authenticated
-principal, while lookup remains tenant-scoped and bounded.
+principal, while lookup remains tenant-scoped and bounded. Accounting operational projections use
+separate narrow read capabilities for legal-entity configuration, accounts, journals, revenue
+profiles, and periods; write capabilities do not implicitly grant those reads.
 
 ## Scope
 
@@ -184,8 +199,8 @@ domain policy, and SoD before a sensitive response or command succeeds.
 
 ## Policy Safety
 
-Tenant administrators must not provide arbitrary SQL, JavaScript, or other
-unrestricted code. Dynamic conditions use a typed, validated policy model.
+Tenant administrators must not provide arbitrary SQL, JavaScript, or other unrestricted code.
+Dynamic conditions use a typed, validated policy model.
 
 Business policy is evaluated by the owning domain or an explicit RITSEI policy contract. The
 relationship evaluator must not contain amount, period, inventory, balance, credit, manufacturing,
@@ -200,11 +215,10 @@ trusted routing metadata is resolved.
 A caller must still pass tenant membership, scoped capability, scope, relationship, domain policy,
 and Separation of Duties checks. A query projection or isolated executor must fail closed when
 authorization context is missing, stale beyond its contract, or invalid. Sensitive isolated queries
-invoke a bounded owner-controlled authorization-check contract with no access to the command
-reserve or use an
-owner-approved fail-closed authorization projection with explicit scope, relationship, SoD,
-revocation, and freshness behavior. If current owner state cannot be evaluated through that path,
-the query is authoritative and does not claim hard projection isolation. WorkloadCell or lease
+invoke a bounded owner-controlled authorization-check contract with no access to the command reserve
+or use an owner-approved fail-closed authorization projection with explicit scope, relationship,
+SoD, revocation, and freshness behavior. If current owner state cannot be evaluated through that
+path, the query is authoritative and does not claim hard projection isolation. WorkloadCell or lease
 membership must never be accepted as proof of tenant visibility or mutation authority.
 
 Capability IDs retain business ownership and verbs. They must not encode `command`, `query`,
@@ -232,8 +246,8 @@ unavailability; it must never silently fall through to an allow path.
 
 ## Process Execution Authority and Separation of Duties
 
-A workflow runtime does not become an authorization superuser. Every process
-command is authorized by the owning domain using explicit execution context:
+A workflow runtime does not become an authorization superuser. Every process command is authorized
+by the owning domain using explicit execution context:
 
 ```text
 ProcessInstanceId
@@ -273,16 +287,16 @@ Organization policy:
   amount > threshold requires designated approver
 ```
 
-High-risk workflows must preserve actor, initiator, delegation, capability,
-scope, and approval history. Approval completion must be conditional or
-otherwise protected against duplicate or unauthorized completion.
+High-risk workflows must preserve actor, initiator, delegation, capability, scope, and approval
+history. Approval completion must be conditional or otherwise protected against duplicate or
+unauthorized completion.
 
 ### AI recommendations are not principals or approvals
 
-A model, provider, prompt, embedding, confidence value, or recommendation is not a RITSEI
-principal and cannot receive an implicit `AgentPrincipal` identity. An AI adapter may use an
-explicit least-privileged service principal to read approved context or create a draft, but that
-identity does not acquire domain mutation, approval, delegation, or Separation-of-Duties authority.
+A model, provider, prompt, embedding, confidence value, or recommendation is not a RITSEI principal
+and cannot receive an implicit `AgentPrincipal` identity. An AI adapter may use an explicit
+least-privileged service principal to read approved context or create a draft, but that identity
+does not acquire domain mutation, approval, delegation, or Separation-of-Duties authority.
 
 Authorization distinguishes three decisions:
 
