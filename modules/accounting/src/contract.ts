@@ -338,6 +338,49 @@ export const ReverseRevenueForOrderInput = Schema.Struct({
   orderId: Uuid,
 })
 
+const ReadLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))
+
+export const ListAccountingConfigurationsInput = Schema.Struct({
+  ...ScopedInput,
+  legalEntityId: Schema.optionalKey(Uuid),
+  limit: Schema.optionalKey(ReadLimit),
+})
+
+export const ListAccountsInput = Schema.Struct({
+  ...ScopedInput,
+  type: Schema.optionalKey(Account.fields.type),
+  limit: Schema.optionalKey(ReadLimit),
+})
+
+export const ListAccountingPeriodsInput = Schema.Struct({
+  ...ScopedInput,
+  legalEntityId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(AccountingPeriod.fields.status),
+  limit: Schema.optionalKey(ReadLimit),
+})
+
+export const ListRevenuePostingProfilesInput = Schema.Struct({
+  ...ScopedInput,
+  legalEntityId: Schema.optionalKey(Uuid),
+  limit: Schema.optionalKey(ReadLimit),
+})
+
+export const ListJournalEntriesInput = Schema.Struct({
+  ...ScopedInput,
+  status: Schema.optionalKey(Schema.Literals(["posted", "reversed"])),
+  limit: Schema.optionalKey(ReadLimit),
+})
+
+export type ListAccountingConfigurationsInput = Schema.Schema.Type<
+  typeof ListAccountingConfigurationsInput
+>
+export type ListAccountsInput = Schema.Schema.Type<typeof ListAccountsInput>
+export type ListAccountingPeriodsInput = Schema.Schema.Type<typeof ListAccountingPeriodsInput>
+export type ListRevenuePostingProfilesInput = Schema.Schema.Type<
+  typeof ListRevenuePostingProfilesInput
+>
+export type ListJournalEntriesInput = Schema.Schema.Type<typeof ListJournalEntriesInput>
+
 type CommonFailure = AuthorizationDenied | DatabaseFailure | Schema.SchemaError
 
 export interface AccountingService {
@@ -408,6 +451,21 @@ export interface AccountingService {
     | AccountingErrors.FinancialEngineCutoverBlocked
     | CommonFailure
   >
+  readonly listAccountingConfigurations: (
+    input: unknown,
+  ) => Effect.Effect<readonly AccountingConfiguration[], CommonFailure>
+  readonly listAccounts: (
+    input: unknown,
+  ) => Effect.Effect<readonly Account[], CommonFailure>
+  readonly listAccountingPeriods: (
+    input: unknown,
+  ) => Effect.Effect<readonly AccountingPeriod[], CommonFailure>
+  readonly listRevenuePostingProfiles: (
+    input: unknown,
+  ) => Effect.Effect<readonly RevenuePostingProfile[], CommonFailure>
+  readonly listJournalEntries: (
+    input: unknown,
+  ) => Effect.Effect<readonly JournalEntry[], CommonFailure>
   readonly createAccount: (
     input: unknown,
   ) => Effect.Effect<Account, AccountingErrors.AccountAlreadyExists | CommonFailure>

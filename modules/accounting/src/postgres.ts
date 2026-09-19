@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, lte } from "drizzle-orm"
+import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Encoding from "effect/Encoding"
 import * as Effect from "effect/Effect"
@@ -20,13 +20,7 @@ import {
 } from "../../../db/schema/accounting.ts"
 import { AuthorizationService } from "../../authorization/mod.ts"
 import { AccountingCapabilities } from "./capabilities.ts"
-import {
-  Database,
-  DatabaseFailure,
-  isDatabaseConstraint,
-  requireExactMajorToMinor,
-  uuidv7,
-} from "../../../foundation/mod.ts"
+import { Database, DatabaseFailure, isDatabaseConstraint, uuidv7 } from "../../../foundation/mod.ts"
 import {
   FinancialVerificationKeyring,
   FinancialVerificationSigner,
@@ -47,6 +41,14 @@ import {
   FinancialVerificationEvidence,
   hashFinancialVerificationEvidence,
 } from "./financial-readiness.ts"
+import { withAccountingOperationNames } from "./service-wrappers.ts"
+import {
+  normalizeLines,
+  revenueReference,
+  reversalReference,
+  utcDate,
+  validateLines,
+} from "./domain-helpers.ts"
 import {
   Account,
   AccountingService,
@@ -59,7 +61,12 @@ import {
   FinancialCutoverControl,
   FinancialVerificationArtifact,
   JournalLine,
+  ListAccountingConfigurationsInput,
+  ListAccountingPeriodsInput,
+  ListAccountsInput,
   ListFinancialStagingEvidenceInput,
+  ListJournalEntriesInput,
+  ListRevenuePostingProfilesInput,
   OpenPeriodInput,
   PostJournalInput,
   PostRevenueForOrderInput,
@@ -82,14 +89,12 @@ import {
   FinancialStagingEvidenceInvalid,
   FinancialVerificationArtifactInvalid,
   FinancialVerificationArtifactNotFound,
-  InvalidJournalLine,
   InvalidRevenuePostingProfile,
   JournalIdempotencyConflict,
   JournalReferenceAlreadyExists,
   RevenueJournalNotFound,
   RevenuePostingProfileAlreadyExists,
   RevenuePostingProfileNotFound,
-  UnbalancedJournal,
 } from "./errors.ts"
 
 const decodeFinancialVerificationSignature = (
@@ -102,53 +107,6 @@ const decodeFinancialVerificationSignature = (
       new FinancialVerificationArtifactInvalid({ tenantId, legalEntityId, reason: "unsigned" })
     ),
   )
-
-const withAccountingOperationNames = (service: AccountingService): AccountingService => ({
-  configureLegalEntity: Effect.fn("AccountingService.configureLegalEntity")((input: unknown) =>
-    service.configureLegalEntity(input)
-  ),
-  recordFinancialVerificationArtifact: Effect.fn(
-    "AccountingService.recordFinancialVerificationArtifact",
-  )((input: unknown) => service.recordFinancialVerificationArtifact(input)),
-  recordFinancialStagingEvidence: Effect.fn(
-    "AccountingService.recordFinancialStagingEvidence",
-  )((input: unknown) => service.recordFinancialStagingEvidence(input)),
-  listFinancialStagingEvidence: Effect.fn(
-    "AccountingService.listFinancialStagingEvidence",
-  )((input: unknown) => service.listFinancialStagingEvidence(input)),
-  prepareTigerBeetleCutover: Effect.fn("AccountingService.prepareTigerBeetleCutover")((
-    input: unknown,
-  ) => service.prepareTigerBeetleCutover(input)),
-  approveTigerBeetleCutover: Effect.fn("AccountingService.approveTigerBeetleCutover")((
-    input: unknown,
-  ) => service.approveTigerBeetleCutover(input)),
-  activateTigerBeetleCutover: Effect.fn("AccountingService.activateTigerBeetleCutover")((
-    input: unknown,
-  ) => service.activateTigerBeetleCutover(input)),
-  createAccount: Effect.fn("AccountingService.createAccount")((input: unknown) =>
-    service.createAccount(input)
-  ),
-  configureRevenuePosting: Effect.fn("AccountingService.configureRevenuePosting")((
-    input: unknown,
-  ) => service.configureRevenuePosting(input)),
-  openPeriod: Effect.fn("AccountingService.openPeriod")((input: unknown) =>
-    service.openPeriod(input)
-  ),
-  closePeriod: Effect.fn("AccountingService.closePeriod")((input: unknown) =>
-    service.closePeriod(input)
-  ),
-  postRevenueForOrder: Effect.fn("AccountingService.postRevenueForOrder")((input: unknown) =>
-    service.postRevenueForOrder(input)
-  ),
-  reverseRevenueForOrder: Effect.fn("AccountingService.reverseRevenueForOrder")((input: unknown) =>
-    service.reverseRevenueForOrder(input)
-  ),
-  postJournal: Effect.fn("AccountingService.postJournal")((input: unknown) =>
-    service.postJournal(input)
-  ),
-})
-
-const toMinor = (value: string) => requireExactMajorToMinor(value, 2)
 
 const journalEntrySelection = {
   id: journalEntries.id,
@@ -165,30 +123,45 @@ const journalLineSelection = {
   credit: journalLines.credit,
 }
 
-const revenueReference = (legalEntityId: string, orderId: string) =>
-  `revenue:${legalEntityId}:${orderId}`
-const reversalReference = (legalEntityId: string, orderId: string) =>
-  `revenue-reversal:${legalEntityId}:${orderId}`
-const utcDate = (clock: Clock.Clock) =>
-  new Date(clock.currentTimeMillisUnsafe()).toISOString().slice(0, 10)
+const journalLineWithEntrySelection = {
+  entryId: journalLines.entryId,
+  accountId: journalLines.accountId,
+  debit: journalLines.debit,
+  credit: journalLines.credit,
+}
 
-const normalizeLines = (lines: readonly JournalLine[]) =>
-  lines.map((line) => `${line.accountId}:${toMinor(line.debit)}:${toMinor(line.credit)}`).toSorted()
+const accountingConfigurationSelection = {
+  tenantId: legalEntityAccountingConfigurations.tenantId,
+  legalEntityId: legalEntityAccountingConfigurations.legalEntityId,
+  baseCurrency: legalEntityAccountingConfigurations.baseCurrency,
+  precision: legalEntityAccountingConfigurations.precision,
+  fiscalYearStartMonth: legalEntityAccountingConfigurations.fiscalYearStartMonth,
+  postingEnabled: legalEntityAccountingConfigurations.postingEnabled,
+  financialEngine: legalEntityAccountingConfigurations.financialEngine,
+}
 
-const validateLines = (lines: readonly JournalLine[]) => {
-  if (lines.length < 2) return new UnbalancedJournal({ debit: "0", credit: "0" })
-  let debit = 0n
-  let credit = 0n
-  for (const [index, line] of lines.entries()) {
-    const lineDebit = toMinor(line.debit)
-    const lineCredit = toMinor(line.credit)
-    if ((lineDebit > 0n) === (lineCredit > 0n)) return new InvalidJournalLine({ index })
-    debit += lineDebit
-    credit += lineCredit
-  }
-  return debit === credit
-    ? undefined
-    : new UnbalancedJournal({ debit: String(debit), credit: String(credit) })
+const accountSelection = {
+  id: accounts.id,
+  tenantId: accounts.tenantId,
+  code: accounts.code,
+  name: accounts.name,
+  type: accounts.type,
+}
+
+const accountingPeriodSelection = {
+  id: accountingPeriods.id,
+  tenantId: accountingPeriods.tenantId,
+  legalEntityId: accountingPeriods.legalEntityId,
+  startsOn: accountingPeriods.startsOn,
+  endsOn: accountingPeriods.endsOn,
+  status: accountingPeriods.status,
+}
+
+const revenuePostingProfileSelection = {
+  tenantId: revenuePostingProfiles.tenantId,
+  legalEntityId: revenuePostingProfiles.legalEntityId,
+  receivableAccountId: revenuePostingProfiles.receivableAccountId,
+  revenueAccountId: revenuePostingProfiles.revenueAccountId,
 }
 
 export const makeAccountingService = Effect.gen(function* () {
@@ -385,6 +358,8 @@ export const makeAccountingService = Effect.gen(function* () {
         )
       }
     })
+  // Fallow: memory and PostgreSQL adapters intentionally mirror the guarded service shape.
+  // fallow-ignore-next-line code-duplication
   const loadCutoverControl = (tenantId: string, legalEntityId: string, lock = false) =>
     database.query(
       (db) => {
@@ -398,6 +373,161 @@ export const makeAccountingService = Effect.gen(function* () {
     )
 
   const service: AccountingService = {
+    listAccountingConfigurations: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListAccountingConfigurationsInput)(
+          input,
+        )
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: AccountingCapabilities.legalEntityRead,
+        })
+        const rows = yield* database.query(
+          (db) => {
+            const filters = [eq(legalEntityAccountingConfigurations.tenantId, decoded.tenantId)]
+            if (decoded.legalEntityId !== undefined) {
+              filters.push(
+                eq(legalEntityAccountingConfigurations.legalEntityId, decoded.legalEntityId),
+              )
+            }
+            return db.select(accountingConfigurationSelection)
+              .from(legalEntityAccountingConfigurations)
+              .where(and(...filters))
+              .orderBy(asc(legalEntityAccountingConfigurations.legalEntityId))
+              .limit(decoded.limit ?? 200)
+          },
+          "accounting.configuration.list",
+        )
+        return rows.map((row) => ({ ...row, precision: 2 as const }))
+      }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public account-read authorization.
+    // fallow-ignore-next-line code-duplication
+    listAccounts: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListAccountsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: AccountingCapabilities.accountRead,
+        })
+        const rows = yield* database.query(
+          (db) => {
+            const filters = [eq(accounts.tenantId, decoded.tenantId)]
+            if (decoded.type !== undefined) filters.push(eq(accounts.type, decoded.type))
+            return db.select(accountSelection).from(accounts).where(and(...filters))
+              .orderBy(asc(accounts.code)).limit(decoded.limit ?? 200)
+          },
+          "accounting.account.list",
+        )
+        return rows
+      }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public period-read authorization.
+    // fallow-ignore-next-line code-duplication
+    listAccountingPeriods: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListAccountingPeriodsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: AccountingCapabilities.periodRead,
+        })
+        const rows = yield* database.query(
+          (db) => {
+            const filters = [eq(accountingPeriods.tenantId, decoded.tenantId)]
+            if (decoded.legalEntityId !== undefined) {
+              filters.push(eq(accountingPeriods.legalEntityId, decoded.legalEntityId))
+            }
+            if (decoded.status !== undefined) {
+              filters.push(eq(accountingPeriods.status, decoded.status))
+            }
+            return db.select(accountingPeriodSelection).from(accountingPeriods).where(
+              and(...filters),
+            )
+              .orderBy(asc(accountingPeriods.startsOn), asc(accountingPeriods.id))
+              .limit(decoded.limit ?? 200)
+          },
+          "accounting.period.list",
+        )
+        return rows
+      }),
+    listRevenuePostingProfiles: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListRevenuePostingProfilesInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: AccountingCapabilities.revenueRead,
+        })
+        const rows = yield* database.query(
+          (db) => {
+            const filters = [eq(revenuePostingProfiles.tenantId, decoded.tenantId)]
+            if (decoded.legalEntityId !== undefined) {
+              filters.push(eq(revenuePostingProfiles.legalEntityId, decoded.legalEntityId))
+            }
+            return db.select(revenuePostingProfileSelection)
+              .from(revenuePostingProfiles)
+              .where(and(...filters))
+              .orderBy(asc(revenuePostingProfiles.legalEntityId))
+              .limit(decoded.limit ?? 200)
+          },
+          "accounting.revenue_profile.list",
+        )
+        return rows
+      }),
+    // Fallow: memory and PostgreSQL adapters intentionally mirror public read authorization.
+    // fallow-ignore-next-line code-duplication
+    listJournalEntries: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListJournalEntriesInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: AccountingCapabilities.journalRead,
+        })
+        const rows = yield* database.query(
+          (db) => {
+            const filters = [eq(journalEntries.tenantId, decoded.tenantId)]
+            if (decoded.status !== undefined) {
+              filters.push(eq(journalEntries.status, decoded.status))
+            } else {
+              filters.push(inArray(journalEntries.status, ["posted", "reversed"]))
+            }
+            return db.select(journalEntrySelection).from(journalEntries).where(and(...filters))
+              .orderBy(desc(journalEntries.postedAt), desc(journalEntries.id))
+              .limit(decoded.limit ?? 200)
+          },
+          "accounting.journal.list",
+        )
+        if (rows.length === 0) return []
+        const lines = yield* database.query(
+          (db) =>
+            db.select(journalLineWithEntrySelection).from(journalLines).where(and(
+              eq(journalLines.tenantId, decoded.tenantId),
+              inArray(journalLines.entryId, rows.map((row) => row.id)),
+            )).orderBy(asc(journalLines.entryId), asc(journalLines.id)),
+          "accounting.journal.lines.list",
+        )
+        const linesByEntry = new Map<string, JournalLine[]>()
+        for (const line of lines) {
+          const entryLines = linesByEntry.get(line.entryId) ?? []
+          entryLines.push({
+            accountId: line.accountId,
+            debit: String(line.debit ?? "0"),
+            credit: String(line.credit ?? "0"),
+          })
+          linesByEntry.set(line.entryId, entryLines)
+        }
+        return rows.map((row) => ({
+          id: row.id,
+          tenantId: row.tenantId,
+          reference: row.reference,
+          status: row.status as "posted" | "reversed",
+          postedAt: row.postedAt!.toISOString(),
+          ...(row.reversesEntryId === null ? {} : { reversesEntryId: row.reversesEntryId }),
+          lines: linesByEntry.get(row.id) ?? [],
+        }))
+      }),
     recordFinancialStagingEvidence: (input) =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknownEffect(RecordFinancialStagingEvidenceInput)(
