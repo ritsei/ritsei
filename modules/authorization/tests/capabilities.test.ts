@@ -37,6 +37,23 @@ describe("capability naming contract", () => {
     }
   })
 
+  it("registers Process Studio capabilities as canonical tenant-scoped identifiers", () => {
+    const processCapabilities = [
+      "process.catalog.read",
+      "process.definition.validate",
+      "process.monitor.read",
+      "process.inbox.read",
+      "process.history.read",
+      "process.runtime.retry",
+      "process.runtime.compensate",
+      "process.runtime.manual_recovery",
+    ] as const
+    for (const capability of processCapabilities) {
+      assert.isTrue(CapabilityIds.includes(capability))
+      assert.isDefined(CapabilityDefinitions.find((definition) => definition.id === capability))
+    }
+  })
+
   it("accepts canonical shapes and rejects broad or nested names", () => {
     assert.isTrue(isCapabilityIdShape("party.create"))
     assert.isTrue(isCapabilityIdShape("inventory.stock_transfer.confirm"))

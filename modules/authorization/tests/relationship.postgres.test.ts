@@ -2,9 +2,9 @@ import { assert, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 
 import { makeAuthService } from "../../auth/mod.ts"
+import { makeAuthorizationService } from "../mod.ts"
 import { makeUserAccountService, UserAccountService } from "../../identity/mod.ts"
 import { Database, uuidv7 } from "../../../foundation/mod.ts"
-import { tenantMemberships } from "../../../db/schema/authorization.ts"
 import { makePostgresDatabase, runMigrations, WebCryptoLive } from "../../../platform/mod.ts"
 import { makePostgresRelationshipEngine } from "../mod.ts"
 import { withTemporaryDatabase } from "../../../tests/support/postgres-database.ts"
@@ -27,6 +27,9 @@ it.effect.skipIf(databaseUrl === undefined)(
           Effect.provide(WebCryptoLive),
           Effect.provideService(UserAccountService, userAccounts),
         )
+        const authorization = yield* makeAuthorizationService.pipe(
+          Effect.provideService(Database, database),
+        )
         const tenant = yield* auth.createTenant({ slug: `relationship-${uuidv7()}` })
         const engine = makePostgresRelationshipEngine(database)
         const principal = { userAccountId: user.id, sessionId: "relationship-session" }
@@ -41,12 +44,7 @@ it.effect.skipIf(databaseUrl === undefined)(
         assert.strictEqual(before.allowed, false)
         assert.strictEqual(before.result, "denied")
 
-        yield* database.query(
-          (db) =>
-            db.insert(tenantMemberships)
-              .values({ userAccountId: user.id, tenantId: tenant.id }),
-          "authorization.relationship.test.add",
-        )
+        yield* authorization.addMember({ userAccountId: user.id, tenantId: tenant.id })
         const allowed = yield* engine.evaluate({
           principal,
           tenantId: tenant.id,

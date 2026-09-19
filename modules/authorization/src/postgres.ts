@@ -1,4 +1,4 @@
-import { and, eq } from "drizzle-orm"
+import { and, asc, eq, ilike, sql } from "drizzle-orm"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
 
@@ -8,7 +8,10 @@ import {
   AuthorizationDecision,
   AuthorizationInput,
   AuthorizationService,
+  type DirectCapabilityGrant,
   GrantCapabilityInput,
+  ListAccessibleTenantsInput,
+  ListTenantMembershipsInput,
   TenantMembership,
   TenantMembershipInput,
 } from "./contract.ts"
@@ -26,6 +29,8 @@ import {
   type DatabaseService,
   isDatabaseConstraint,
 } from "../../../foundation/mod.ts"
+
+const escapeLikePattern = (value: string): string => value.replace(/[\\%_]/g, "\\$&")
 
 const readMember = (database: DatabaseService, input: unknown) =>
   Effect.gen(function* () {
@@ -119,19 +124,76 @@ export const makePostgresAuthorizationService = (
   getMember: Effect.fn("AuthorizationService.getMember")((input: unknown) =>
     readMember(database, input)
   ),
-  listMembers: Effect.fn("AuthorizationService.listMembers")((tenantId: string) =>
-    database.query(
-      (db) =>
-        db.select({
-          userAccountId: tenantMemberships.userAccountId,
-          tenantId: tenantMemberships.tenantId,
-          status: tenantMemberships.status,
-        })
-          .from(tenantMemberships)
-          .where(eq(tenantMemberships.tenantId, tenantId))
-          .orderBy(tenantMemberships.userAccountId),
-      "authorization.member.list",
-    ).pipe(Effect.map((rows) => rows.map(toTenantMembership)))
+  listMembers: Effect.fn("AuthorizationService.listMembers")((input: unknown) =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeUnknownEffect(ListTenantMembershipsInput)(input)
+      const rows = yield* database.query(
+        (db) =>
+          db.select({
+            userAccountId: tenantMemberships.userAccountId,
+            tenantId: tenantMemberships.tenantId,
+            status: tenantMemberships.status,
+          })
+            .from(tenantMemberships)
+            .where(and(
+              eq(tenantMemberships.tenantId, decoded.tenantId),
+              decoded.search === undefined ? undefined : ilike(
+                sql`${tenantMemberships.userAccountId}::text`,
+                `%${escapeLikePattern(decoded.search)}%`,
+              ),
+              decoded.status === undefined
+                ? undefined
+                : eq(tenantMemberships.status, decoded.status),
+            ))
+            .orderBy(asc(tenantMemberships.userAccountId))
+            .limit(decoded.limit ?? 200),
+        "authorization.member.list",
+      )
+      return rows.map(toTenantMembership)
+    })
+  ),
+  listAccessibleTenants: Effect.fn("AuthorizationService.listAccessibleTenants")((input: unknown) =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeUnknownEffect(ListAccessibleTenantsInput)(input)
+      const rows = yield* database.query(
+        (db) =>
+          db.select({
+            userAccountId: tenantMemberships.userAccountId,
+            tenantId: tenantMemberships.tenantId,
+            status: tenantMemberships.status,
+          })
+            .from(tenantMemberships)
+            .where(and(
+              eq(tenantMemberships.userAccountId, decoded.userAccountId),
+              eq(tenantMemberships.status, "active"),
+            ))
+            .orderBy(asc(tenantMemberships.tenantId)),
+        "authorization.member.listAccessibleTenants",
+      )
+      return rows.map(toTenantMembership)
+    })
+  ),
+  listDirectGrants: Effect.fn("AuthorizationService.listDirectGrants")((input: unknown) =>
+    Effect.gen(function* () {
+      const decoded = yield* Schema.decodeUnknownEffect(TenantMembershipInput)(input)
+      yield* readMember(database, decoded)
+      const rows = yield* database.query(
+        (db) =>
+          db.select({ capability: memberships.capability })
+            .from(memberships)
+            .where(and(
+              eq(memberships.userAccountId, decoded.userAccountId),
+              eq(memberships.tenantId, decoded.tenantId),
+            ))
+            .orderBy(asc(memberships.capability)),
+        "authorization.grant.list",
+      )
+      return rows.map(({ capability }): DirectCapabilityGrant => ({
+        ...decoded,
+        capability: capability as DirectCapabilityGrant["capability"],
+        scope: "tenant",
+      }))
+    })
   ),
   suspendMember: Effect.fn("AuthorizationService.suspendMember")((input: unknown) =>
     updateStatus(database, input, "suspended", "authorization.member.suspend")

@@ -6,7 +6,10 @@ import {
   AuthorizationDecision,
   AuthorizationInput,
   AuthorizationService,
+  type DirectCapabilityGrant,
   GrantCapabilityInput,
+  ListAccessibleTenantsInput,
+  ListTenantMembershipsInput,
   TenantMembership,
   TenantMembershipInput,
 } from "./contract.ts"
@@ -76,10 +79,48 @@ export const makeMemoryAuthorizationService = (
     getMember: Effect.fn("AuthorizationService.getMember")((input: unknown) =>
       Schema.decodeUnknownEffect(TenantMembershipInput)(input).pipe(Effect.flatMap(member))
     ),
-    listMembers: Effect.fn("AuthorizationService.listMembers")((tenantId: string) =>
-      Effect.succeed(
-        [...membershipsStore.values()].filter((member) => member.tenantId === tenantId),
-      )
+    listMembers: Effect.fn("AuthorizationService.listMembers")((input: unknown) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListTenantMembershipsInput)(input)
+        return [...membershipsStore.values()]
+          .filter((member) =>
+            member.tenantId === decoded.tenantId &&
+            (decoded.search === undefined ||
+              member.userAccountId.toLocaleLowerCase().includes(
+                decoded.search.toLocaleLowerCase(),
+              )) &&
+            (decoded.status === undefined || member.status === decoded.status)
+          )
+          .sort((left, right) => left.userAccountId.localeCompare(right.userAccountId))
+          .slice(0, decoded.limit ?? 200)
+      })
+    ),
+    listAccessibleTenants: Effect.fn("AuthorizationService.listAccessibleTenants")((
+      input: unknown,
+    ) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListAccessibleTenantsInput)(input)
+        return [...membershipsStore.values()]
+          .filter((member) =>
+            member.userAccountId === decoded.userAccountId && member.status === "active"
+          )
+          .sort((left, right) => left.tenantId.localeCompare(right.tenantId))
+      })
+    ),
+    listDirectGrants: Effect.fn("AuthorizationService.listDirectGrants")((input: unknown) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(TenantMembershipInput)(input)
+        yield* member(decoded)
+        const prefix = `${membershipKey(decoded.userAccountId, decoded.tenantId)}:`
+        return [...grants]
+          .filter((grant) => grant.startsWith(prefix))
+          .map((grant): DirectCapabilityGrant => ({
+            ...decoded,
+            capability: grant.slice(prefix.length) as DirectCapabilityGrant["capability"],
+            scope: "tenant",
+          }))
+          .sort((left, right) => left.capability.localeCompare(right.capability))
+      })
     ),
     suspendMember: Effect.fn("AuthorizationService.suspendMember")((input: unknown) =>
       updateMember(input, "suspended")

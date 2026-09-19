@@ -42,6 +42,32 @@ export const TenantMembershipInput = Schema.Struct({
   tenantId: Schema.String,
 })
 
+export const ListAccessibleTenantsInput = Schema.Struct({
+  userAccountId: Schema.String,
+})
+export type ListAccessibleTenantsInput = Schema.Schema.Type<typeof ListAccessibleTenantsInput>
+
+const TenantMembershipSearch = Schema.Trim.pipe(
+  Schema.check(Schema.isPattern(/\S/)),
+  Schema.check(Schema.isMaxLength(256)),
+)
+
+export const ListTenantMembershipsInput = Schema.Struct({
+  tenantId: Schema.String,
+  search: Schema.optionalKey(TenantMembershipSearch),
+  status: Schema.optionalKey(TenantMembershipStatus),
+  limit: Schema.optionalKey(Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))),
+})
+export type ListTenantMembershipsInput = Schema.Schema.Type<typeof ListTenantMembershipsInput>
+
+export const DirectCapabilityGrant = Schema.Struct({
+  userAccountId: Schema.String,
+  tenantId: Schema.String,
+  capability: Capability,
+  scope: Schema.Literal("tenant"),
+})
+export type DirectCapabilityGrant = Schema.Schema.Type<typeof DirectCapabilityGrant>
+
 export const AuthorizationDecision = Schema.Struct({
   allowed: Schema.Literal(true),
   tenantId: Schema.String,
@@ -72,8 +98,17 @@ export interface AuthorizationService {
     import("./errors.ts").TenantMembershipNotFound | DatabaseFailure | Schema.SchemaError
   >
   readonly listMembers: (
-    tenantId: string,
-  ) => Effect.Effect<readonly TenantMembership[], DatabaseFailure>
+    input: unknown,
+  ) => Effect.Effect<readonly TenantMembership[], DatabaseFailure | Schema.SchemaError>
+  readonly listAccessibleTenants: (
+    input: unknown,
+  ) => Effect.Effect<readonly TenantMembership[], DatabaseFailure | Schema.SchemaError>
+  readonly listDirectGrants: (
+    input: unknown,
+  ) => Effect.Effect<
+    readonly DirectCapabilityGrant[],
+    import("./errors.ts").TenantMembershipNotFound | DatabaseFailure | Schema.SchemaError
+  >
   readonly suspendMember: (
     input: unknown,
   ) => Effect.Effect<

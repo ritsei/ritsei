@@ -21,7 +21,10 @@ export {
   AuthorizationInput,
   AuthorizationService,
   Capability,
+  DirectCapabilityGrant,
   GrantCapabilityInput,
+  ListAccessibleTenantsInput,
+  ListTenantMembershipsInput,
   TenantMembership,
   TenantMembershipInput,
   TenantMembershipStatus,
@@ -29,6 +32,9 @@ export {
 export type {
   AuthorizationService as AuthorizationServiceShape,
   Capability as CapabilityType,
+  DirectCapabilityGrant as DirectCapabilityGrantType,
+  ListAccessibleTenantsInput as ListAccessibleTenantsInputType,
+  ListTenantMembershipsInput as ListTenantMembershipsInputType,
   TenantMembership as TenantMembershipType,
   TenantMembershipStatus as TenantMembershipStatusType,
 } from "./src/contract.ts"
