@@ -88,14 +88,14 @@ export function Checkout() {
       setNotice(null);
       try {
         setPhase("reserving");
-        reservation = yield* reserveInventory(items);
+        reservation = yield reserveInventory(items);
         setPhase("charging");
-        charge = yield* chargeCard(
+        charge = yield chargeCard(
           items.reduce((sum, item) => sum + item.price * item.quantity, 0),
           decline,
         );
         setPhase("finalizing");
-        const order = yield* createOrder(items, reservation, charge);
+        const order = yield createOrder(items, reservation, charge);
         setNotice({
           kind: "success",
           text: `Order ${order.id} confirmed — $${order.total.toFixed(2)}`,
@@ -106,8 +106,8 @@ export function Checkout() {
         // Saga compensation, in reverse order of what committed. Mid-step
         // cleanup (voiding a half-done authorization) already ran via the
         // interrupted step's own finalizers.
-        if (charge) yield* refundCharge(charge);
-        if (reservation) yield* releaseReservation(reservation);
+        if (charge) yield refundCharge(charge);
+        if (reservation) yield releaseReservation(reservation);
         if (e instanceof CardDeclinedError) {
           setNotice({
             kind: "error",

@@ -24,15 +24,15 @@ const styles = {
 
 export function Button(props: ButtonProps) {
   const buttonProps = omit(props, "variant", "loading", "iconOnly", "class", "children")
-  const variant = props.variant ?? "secondary"
+  const variant = () => props.variant ?? "secondary"
   return (
     <button
       {...buttonProps}
       aria-busy={props.loading ? "true" : undefined}
       disabled={props.disabled || props.loading}
       class={[
-        control(variant === "primary" ? { kind: "action" } : {}),
-        variant === "danger" && styles.danger,
+        control(variant() === "primary" ? { kind: "action" } : {}),
+        variant() === "danger" && styles.danger,
         props.loading && styles.loading,
         props.iconOnly && styles.iconOnly,
         props.class,

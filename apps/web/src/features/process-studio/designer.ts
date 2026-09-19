@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
 
 import { createEffect, createRoot, createSignal } from "solid-js"
-
+import type { ProcessCatalogDescriptor } from "../../shared/contracts/generated/process.ts"
 import {
   applyDesignerAction,
   type CatalogReference,
@@ -23,14 +23,13 @@ import {
   ProcessStudioLaneDescriptions,
   ProcessStudioLaneLabels,
   ProcessStudioLanes,
-  ProcessStudioPacks,
   ProcessStudioTemplates,
   serializeProcessStudioDraft,
 } from "./product-surface.ts"
 
 const tag = <K extends keyof HTMLElementTagNameMap>(name: K): HTMLElementTagNameMap[K] =>
   document.createElement(name)
-const label = (value: string): HTMLSpanElement => {
+const text = (value: string): HTMLSpanElement => {
   const node = tag("span")
   node.textContent = value
   return node
@@ -58,10 +57,9 @@ const ensureStyle = (): void => {
 .ritsei-process-designer header{align-items:end;background:#172033;color:#fffdf8;display:flex;justify-content:space-between;padding:24px 28px}.ritsei-process-designer h1,.ritsei-process-designer h2,.ritsei-process-designer p{margin:0}
 .ritsei-process-designer h1{font-size:clamp(24px,4vw,38px);letter-spacing:-.04em}.ritsei-process-designer h2{font-size:12px;letter-spacing:.1em;text-transform:uppercase}
 .ritsei-process-designer .eyebrow{color:#d8f34f;font-size:11px;font-weight:800;letter-spacing:.16em;text-transform:uppercase}.ritsei-process-designer .subtitle{color:#cad3df;margin-top:5px}
-.ritsei-process-designer .badge{background:#d8f34f;border-radius:999px;color:#172033;font-size:11px;font-weight:800;padding:5px 9px}.ritsei-process-designer .grid{display:grid;grid-template-columns:190px minmax(280px,1fr) 280px;min-height:450px}
+.ritsei-process-designer .badge{background:#d8f34f;border-radius:999px;color:#172033;font-size:11px;font-weight:800;padding:5px 9px}.ritsei-process-designer .grid{display:grid;grid-template-columns:190px minmax(280px,1fr) 300px;min-height:450px}
 .ritsei-process-designer aside,.ritsei-process-designer main{padding:20px}.ritsei-process-designer aside{border-right:1px solid #d6cfc1}.ritsei-process-designer aside:last-child{border-left:1px solid #d6cfc1;border-right:0}.ritsei-process-designer .palette,.ritsei-process-designer .nodes,.ritsei-process-designer .inspector,.ritsei-process-designer .inspector-fields{display:grid;gap:9px}.ritsei-process-designer .palette{margin-top:14px}.ritsei-process-designer .palette button{border-left:4px solid #5b3cc4}
-.ritsei-process-designer nav{background:#fffdf8;border-bottom:1px solid #d6cfc1;display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px}.ritsei-process-designer nav button[aria-pressed="true"]{background:#172033;color:#fffdf8}.ritsei-process-designer .lane-status{color:#596273;font-size:13px;padding:0 20px 12px}.ritsei-process-designer .pack-list,.ritsei-process-designer .template-list{display:grid;gap:8px;margin:0 20px 16px}.ritsei-process-designer .pack-card,.ritsei-process-designer .template-option{background:#fffdf8;border:1px solid #d6cfc1;border-radius:8px;padding:10px}.ritsei-process-designer .pack-card h2,.ritsei-process-designer .pack-card h3{margin:0}.ritsei-process-designer .pack-card h3{font-size:17px}.ritsei-process-designer .pack-card p{color:#596273;font-size:13px;margin:6px 0 0}.ritsei-process-designer .pack-meta{font:12px ui-monospace,SFMono-Regular,monospace}.ritsei-process-designer .template-option button{border-left:4px solid #d8f34f;width:100%}.ritsei-process-designer .template-option p{color:#596273;font-size:13px;margin:6px 4px 0}.ritsei-process-designer .toolbar{align-items:center;display:flex;gap:10px;justify-content:space-between;margin-bottom:16px}.ritsei-process-designer .toolbar p{color:#596273;font-size:13px}.ritsei-process-designer .validate{background:#5b3cc4;border-color:#5b3cc4;color:#fff;font-weight:700}
-.ritsei-process-designer .nodes{list-style:none;margin:0;padding:0}.ritsei-process-designer .node{background:#fffdf8;border:1px solid #c9c2b5;border-radius:10px;box-shadow:4px 4px 0 #ded6c8;padding:12px}.ritsei-process-designer .node.selected{border-color:#5b3cc4;box-shadow:4px 4px 0 #d8f34f}.ritsei-process-designer .node button{border:0;padding:0;width:100%}.ritsei-process-designer .meta,.ritsei-process-designer .capability{display:block;font-size:12px;margin-top:5px}.ritsei-process-designer .meta{color:#697181}.ritsei-process-designer .capability{color:#5b3cc4;overflow-wrap:anywhere}.ritsei-process-designer .arrow{color:#8d8578;text-align:center}.ritsei-process-designer label{display:grid;font-size:12px;font-weight:700;gap:5px}.ritsei-process-designer .move{display:flex;gap:8px}.ritsei-process-designer .move button{flex:1;text-align:center}.ritsei-process-designer .mapping{border-top:1px solid #d6cfc1;font:11px ui-monospace,SFMono-Regular,monospace;padding-top:10px;overflow-wrap:anywhere}.ritsei-process-designer .validation{background:#fff6d7;border-left:4px solid #d58c13;color:#5b461c;margin-top:18px;padding:10px 12px}.ritsei-process-designer .valid{background:#eaf6d6;border-left-color:#4d8d45;color:#285124}.ritsei-process-designer .validation ul{margin:5px 0 0;padding-left:20px}
+.ritsei-process-designer nav{background:#fffdf8;border-bottom:1px solid #d6cfc1;display:flex;flex-wrap:wrap;gap:8px;padding:12px 20px}.ritsei-process-designer nav button[aria-pressed="true"]{background:#172033;color:#fffdf8}.ritsei-process-designer .lane-status{color:#596273;font-size:13px;padding:0 20px 12px}.ritsei-process-designer .template-list{display:grid;gap:8px;margin:0 20px 16px}.ritsei-process-designer .template-option{background:#fffdf8;border:1px solid #d6cfc1;border-radius:8px;padding:10px}.ritsei-process-designer .template-option button{border-left:4px solid #d8f34f;width:100%}.ritsei-process-designer .template-option p{color:#596273;font-size:13px;margin:6px 4px 0}.ritsei-process-designer .toolbar{align-items:center;display:flex;gap:10px;justify-content:space-between;margin-bottom:16px}.ritsei-process-designer .toolbar p{color:#596273;font-size:13px}.ritsei-process-designer .validate{background:#5b3cc4;border-color:#5b3cc4;color:#fff;font-weight:700}.ritsei-process-designer .nodes{list-style:none;margin:0;padding:0}.ritsei-process-designer .node{background:#fffdf8;border:1px solid #c9c2b5;border-radius:10px;box-shadow:4px 4px 0 #ded6c8;padding:12px}.ritsei-process-designer .node.selected{border-color:#5b3cc4;box-shadow:4px 4px 0 #d8f34f}.ritsei-process-designer .node button{border:0;padding:0;width:100%}.ritsei-process-designer .meta,.ritsei-process-designer .capability,.ritsei-process-designer .catalog-description{display:block;font-size:12px;margin-top:5px}.ritsei-process-designer .meta{color:#697181}.ritsei-process-designer .capability{color:#5b3cc4;overflow-wrap:anywhere}.ritsei-process-designer .catalog-description{color:#596273}.ritsei-process-designer label{display:grid;font-size:12px;font-weight:700;gap:5px}.ritsei-process-designer .move{display:flex;gap:8px}.ritsei-process-designer .move button{flex:1;text-align:center}.ritsei-process-designer .mapping{border-top:1px solid #d6cfc1;font:11px ui-monospace,SFMono-Regular,monospace;padding-top:10px;overflow-wrap:anywhere}.ritsei-process-designer .validation{background:#fff6d7;border-left:4px solid #d58c13;color:#5b461c;margin-top:18px;padding:10px 12px}.ritsei-process-designer .valid{background:#eaf6d6;border-left-color:#4d8d45;color:#285124}.ritsei-process-designer .validation ul{margin:5px 0 0;padding-left:20px}
 @media(max-width:900px){.ritsei-process-designer .grid{grid-template-columns:150px minmax(220px,1fr)}.ritsei-process-designer aside:last-child{border-top:1px solid #d6cfc1;grid-column:1/-1}}@media(max-width:620px){.ritsei-process-designer header{align-items:start;flex-direction:column;gap:14px}.ritsei-process-designer .grid{display:block}.ritsei-process-designer aside{border-bottom:1px solid #d6cfc1;border-right:0}}
 @media(prefers-reduced-motion:reduce){.ritsei-process-designer *{scroll-behavior:auto!important;transition:none!important}}
 `
@@ -74,21 +72,26 @@ type Handlers = {
   readonly move: (id: string, direction: "up" | "down") => void
   readonly drop: (sourceId: string, targetId: string) => void
   readonly label: (id: string, value: string) => void
-  readonly capability: (id: string, value: CatalogReference) => void
+  readonly capability: (id: string, value?: CatalogReference) => void
   readonly mapping: (id: string, value: TypedMapping) => void
   readonly validate: () => void
   readonly lane: (lane: ProcessStudioLane) => void
   readonly template: (id: string) => void
 }
 
-// Exploratory prototype only. Production drag/drop is gated by ADR-0079.
+type ProcessDesignerOptions = {
+  readonly catalog?: readonly ProcessCatalogDescriptor[]
+  readonly initialModel?: DesignerModel
+  readonly onValidate?: (
+    model: DesignerModel,
+    issues: ReturnType<typeof validateDesignerModel>,
+  ) => void
+}
+
 const enableDrag = (item: HTMLLIElement, node: DesignerNode, handlers: Handlers): void => {
   if (node.kind === "Start" || node.kind === "End") return
   item.draggable = true
-  item.addEventListener(
-    "dragstart",
-    (event) => event.dataTransfer?.setData("text/plain", node.id),
-  )
+  item.addEventListener("dragstart", (event) => event.dataTransfer?.setData("text/plain", node.id))
   item.addEventListener("dragover", (event) => event.preventDefault())
   item.addEventListener("drop", (event) => {
     event.preventDefault()
@@ -97,16 +100,34 @@ const enableDrag = (item: HTMLLIElement, node: DesignerNode, handlers: Handlers)
   })
 }
 
-const appendCapability = (card: HTMLDivElement, node: DesignerNode): void => {
+const appendCapability = (
+  card: HTMLDivElement,
+  node: DesignerNode,
+  catalog: readonly ProcessCatalogDescriptor[],
+): void => {
   if (node.capability === undefined) return
-  const ref = label(
+  const ref = text(
     `${node.capability.kind}: ${node.capability.id || "unassigned"} v${node.capability.version}`,
   )
   ref.className = "capability"
   card.append(ref)
+  const found = catalog.find((entry) =>
+    entry.kind === node.capability?.kind &&
+    entry.id === node.capability.id && entry.version === node.capability.version
+  )
+  if (found !== undefined) {
+    const description = text(found.title)
+    description.className = "catalog-description"
+    card.append(description)
+  }
 }
 
-const nodeView = (node: DesignerNode, selected: boolean, handlers: Handlers): HTMLLIElement => {
+const nodeView = (
+  node: DesignerNode,
+  selected: boolean,
+  handlers: Handlers,
+  catalog: readonly ProcessCatalogDescriptor[],
+): HTMLLIElement => {
   const item = tag("li")
   enableDrag(item, node, handlers)
   const card = tag("div")
@@ -115,10 +136,10 @@ const nodeView = (node: DesignerNode, selected: boolean, handlers: Handlers): HT
   select.setAttribute("aria-pressed", String(selected))
   select.setAttribute("aria-label", `Select ${node.label}`)
   card.append(select)
-  const meta = label(`${node.kind} · ${node.id}`)
+  const meta = text(`${node.kind} · ${node.id}`)
   meta.className = "meta"
   card.append(meta)
-  appendCapability(card, node)
+  appendCapability(card, node, catalog)
   item.append(card)
   return item
 }
@@ -131,7 +152,7 @@ const catalogKindLabel = (kind: CatalogReference["kind"]): string =>
 
 const appendMappings = (fields: HTMLElement, node: DesignerNode): void => {
   for (const mapping of node.mappings) {
-    const row = label(
+    const row = text(
       `${mapping.sourcePath} (${mapping.sourceType}) → ${mapping.targetPath} (${mapping.targetType})`,
     )
     row.className = "mapping"
@@ -139,39 +160,45 @@ const appendMappings = (fields: HTMLElement, node: DesignerNode): void => {
   }
 }
 
-const catalogEditor = (node: DesignerNode, handlers: Handlers): HTMLElement => {
+const catalogEditor = (
+  node: DesignerNode,
+  catalog: readonly ProcessCatalogDescriptor[],
+  handlers: Handlers,
+): HTMLElement => {
   const fields = tag("div")
   fields.className = "inspector-fields"
   const capabilityKind = catalogKind(node)
-  const capability = node.capability ?? { kind: capabilityKind, id: "", version: 1 }
-  const action = tag("label")
-  action.append(label(`Catalog ${catalogKindLabel(capabilityKind)} ID`))
-  const actionInput = tag("input")
-  actionInput.value = capability.id
-  actionInput.addEventListener(
-    "change",
-    () =>
-      handlers.capability(node.id, {
-        ...capability,
-        kind: capabilityKind,
-        id: actionInput.value.trim(),
-      }),
-  )
-  action.append(actionInput)
-  fields.append(action)
-  const version = tag("label")
-  version.append(label("Catalog version"))
-  const versionInput = tag("input")
-  versionInput.type = "number"
-  versionInput.min = "1"
-  versionInput.step = "1"
-  versionInput.value = String(capability.version)
-  versionInput.addEventListener(
-    "change",
-    () => handlers.capability(node.id, { ...capability, version: Number(versionInput.value) }),
-  )
-  version.append(versionInput)
-  fields.append(version)
+  const selected = node.capability === undefined
+    ? ""
+    : `${node.capability.kind}:${node.capability.id}:${node.capability.version}`
+  const catalogLabel = tag("label")
+  catalogLabel.append(text(`Backend catalog ${catalogKindLabel(capabilityKind)}`))
+  const catalogSelect = tag("select")
+  catalogSelect.setAttribute("aria-label", `Backend catalog ${catalogKindLabel(capabilityKind)}`)
+  const placeholder = tag("option")
+  placeholder.value = ""
+  placeholder.textContent = "Select an active catalog entry"
+  catalogSelect.append(placeholder)
+  catalog.filter((entry) => entry.kind === capabilityKind).forEach((entry) => {
+    const option = tag("option")
+    option.value = `${entry.kind}:${entry.id}:${entry.version}`
+    option.textContent = `${entry.title} · ${entry.id} v${entry.version}`
+    option.selected = option.value === selected
+    catalogSelect.append(option)
+  })
+  catalogSelect.value = selected
+  catalogSelect.addEventListener("change", () => {
+    const [kind, id, version] = catalogSelect.value.split(":")
+    if (
+      kind !== "DomainAction" && kind !== "DomainEvent" || id === undefined || version === undefined
+    ) {
+      handlers.capability(node.id, undefined)
+      return
+    }
+    handlers.capability(node.id, { kind, id, version: Number(version) })
+  })
+  catalogLabel.append(catalogSelect)
+  fields.append(catalogLabel)
   appendMappings(fields, node)
   fields.append(
     button("Add typed mapping", () =>
@@ -185,28 +212,32 @@ const catalogEditor = (node: DesignerNode, handlers: Handlers): HTMLElement => {
   return fields
 }
 
-const inspector = (node: DesignerNode | undefined, handlers: Handlers): HTMLElement => {
+const inspector = (
+  node: DesignerNode | undefined,
+  catalog: readonly ProcessCatalogDescriptor[],
+  handlers: Handlers,
+): HTMLElement => {
   const panel = tag("aside")
   panel.setAttribute("aria-label", "Inspector")
   const heading = tag("h2")
   heading.textContent = "Inspector"
   panel.append(heading)
   if (node === undefined) {
-    panel.append(label("Select a node to edit the structured definition."))
+    panel.append(text("Select a node to edit the structured definition."))
     return panel
   }
   const form = tag("form")
   form.className = "inspector"
   const name = tag("label")
-  name.append(label("Node label"))
+  name.append(text("Node label"))
   const nameInput = tag("input")
   nameInput.value = node.label
   nameInput.addEventListener("change", () => handlers.label(node.id, nameInput.value))
   name.append(nameInput)
   form.append(name)
-  form.append(label(`Kind: ${node.kind}`))
+  form.append(text(`Kind: ${node.kind}`))
   if (node.kind === "DomainCommand" || node.kind === "WaitForEvent") {
-    form.append(catalogEditor(node, handlers))
+    form.append(catalogEditor(node, catalog, handlers))
   }
   const move = tag("div")
   move.className = "move"
@@ -235,39 +266,6 @@ const laneNavigation = (draft: ProcessStudioDraft, handlers: Handlers): HTMLElem
   return lanes
 }
 
-const packList = (): HTMLElement => {
-  const section = tag("section")
-  section.className = "pack-list"
-  section.setAttribute("aria-label", "Process packs")
-  for (const pack of ProcessStudioPacks) {
-    const card = tag("article")
-    card.className = "pack-card"
-    const heading = tag("h3")
-    heading.textContent = `${pack.name} · v${pack.version}`
-    card.append(heading)
-    const profile = tag("p")
-    profile.className = "pack-meta"
-    profile.textContent = `Profile: ${pack.profileId} · ${pack.stability}`
-    card.append(profile)
-    const description = tag("p")
-    description.textContent = pack.description
-    card.append(description)
-    const contents = tag("p")
-    contents.textContent = `Includes ${pack.processTemplateIds.length} process drafts; requires ${
-      pack.requiredCapabilities.map((capability) => `${capability.id} v${capability.version}`).join(
-        ", ",
-      )
-    }.`
-    card.append(contents)
-    const resolution = tag("p")
-    resolution.textContent =
-      "Required capabilities resolve against the backend catalog before release."
-    card.append(resolution)
-    section.append(card)
-  }
-  return section
-}
-
 const templateList = (handlers: Handlers): HTMLElement => {
   const templates = tag("div")
   templates.className = "template-list"
@@ -283,8 +281,7 @@ const templateList = (handlers: Handlers): HTMLElement => {
       `Load ${template.name} version ${template.version}: ${template.description}`,
     )
     option.append(load)
-    const description = tag("p")
-    description.textContent = template.description
+    const description = text(template.description)
     option.append(description)
     templates.append(option)
   }
@@ -309,11 +306,12 @@ const nodeList = (
   model: DesignerModel,
   selected: string,
   handlers: Handlers,
+  catalog: readonly ProcessCatalogDescriptor[],
 ): HTMLOListElement => {
   const nodes = tag("ol")
   nodes.className = "nodes"
   model.nodes.forEach((node, index) => {
-    nodes.append(nodeView(node, node.id === selected, handlers))
+    nodes.append(nodeView(node, node.id === selected, handlers, catalog))
     if (index < model.nodes.length - 1) {
       const arrow = tag("li")
       arrow.className = "arrow"
@@ -325,18 +323,6 @@ const nodeList = (
   return nodes
 }
 
-const validationList = (
-  issues: readonly ReturnType<typeof validateDesignerModel>[number][],
-): HTMLUListElement => {
-  const list = tag("ul")
-  for (const issue of issues) {
-    const item = tag("li")
-    item.textContent = issue.message
-    list.append(item)
-  }
-  return list
-}
-
 const validationPanel = (
   issues: readonly ReturnType<typeof validateDesignerModel>[number][],
 ): HTMLElement => {
@@ -345,10 +331,17 @@ const validationPanel = (
   validation.setAttribute("aria-live", "polite")
   if (issues.length === 0) {
     validation.classList.add("valid")
-    validation.textContent = "Draft is structurally valid. Publish remains a backend concern."
+    validation.textContent =
+      "Draft is structurally valid. Backend catalog validation is still required."
   } else {
-    validation.append(label(`${issues.length} validation issue${issues.length === 1 ? "" : "s"}`))
-    validation.append(validationList(issues))
+    validation.append(text(`${issues.length} validation issue${issues.length === 1 ? "" : "s"}`))
+    const list = tag("ul")
+    for (const issue of issues) {
+      const item = tag("li")
+      item.textContent = issue.message
+      list.append(item)
+    }
+    validation.append(list)
   }
   return validation
 }
@@ -357,6 +350,7 @@ const view = (
   draft: ProcessStudioDraft,
   selected: string,
   issues: readonly ReturnType<typeof validateDesignerModel>[number][],
+  catalog: readonly ProcessCatalogDescriptor[],
   handlers: Handlers,
 ): HTMLElement => {
   const { model } = draft
@@ -364,75 +358,83 @@ const view = (
   shell.className = "ritsei-process-designer"
   const header = tag("header")
   const title = tag("div")
-  const eyebrow = label("Process Studio / Design time")
+  const eyebrow = text("Process Studio / Design time")
   eyebrow.className = "eyebrow"
-  title.append(
-    eyebrow,
-    (() => {
-      const h = tag("h1")
-      h.textContent = "Order path"
-      return h
-    })(),
-  )
-  const subtitle = label("Compose a typed process without executing business semantics.")
+  title.append(eyebrow)
+  const heading = tag("h1")
+  heading.textContent = "Governed draft"
+  title.append(heading)
+  const subtitle = text("Compose typed process structure without executing business semantics.")
   subtitle.className = "subtitle"
   title.append(subtitle)
-  const badge = label(`${model.environment} · v${model.version}`)
+  const badge = text(`${model.environment} · v${model.version}`)
   badge.className = "badge"
   header.append(title, badge)
   shell.append(header)
   shell.append(laneNavigation(draft, handlers))
-  const status = label(laneStatus(draft.lane))
+  const status = text(laneStatus(draft.lane))
   status.className = "lane-status"
   status.setAttribute("role", "status")
   status.setAttribute("aria-live", "polite")
   shell.append(status)
-  if (draft.lane === "templates") {
-    shell.append(packList(), templateList(handlers))
-  }
+  if (draft.lane === "templates") shell.append(templateList(handlers))
   const grid = tag("div")
   grid.className = "grid"
   grid.append(nodePalette(handlers))
-  const canvas = tag("main")
+  const canvas = tag("section")
+  canvas.setAttribute("aria-label", "Definition canvas")
   const toolbar = tag("div")
   toolbar.className = "toolbar"
   toolbar.append(
-    label("Drag to reorder. Keyboard buttons provide the same transition."),
+    text("Drag to reorder. Catalog choices come from the authenticated backend."),
     button("Validate draft", handlers.validate, "validate"),
   )
   canvas.append(toolbar)
-  canvas.append(nodeList(model, selected, handlers), validationPanel(issues))
-  grid.append(canvas, inspector(model.nodes.find((node) => node.id === selected), handlers))
+  canvas.append(nodeList(model, selected, handlers, catalog), validationPanel(issues))
+  grid.append(
+    canvas,
+    inspector(model.nodes.find((node) => node.id === selected), catalog, handlers),
+  )
   shell.append(grid)
   return shell
 }
 
 export type ProcessDesignerMount = {
   readonly dispose: () => void
+  readonly setCatalog: (catalog: readonly ProcessCatalogDescriptor[]) => void
   readonly readIr: () => string
   readonly readDraft: () => ProcessStudioDraft
 }
 
 export const mountProcessDesigner = (
   root: HTMLElement,
-  initialModel: DesignerModel = makeInitialDesignerModel(),
+  options: DesignerModel | ProcessDesignerOptions = {},
 ): ProcessDesignerMount => {
   ensureStyle()
+  const normalized: ProcessDesignerOptions = "nodes" in options
+    ? { initialModel: options }
+    : options
+  const initialModel = normalized.initialModel ?? makeInitialDesignerModel()
+  const catalog = normalized.catalog ?? []
   let currentDraft = makeProcessStudioDraft(initialModel)
   let currentIr = serializeProcessStudioDraft(currentDraft)
+  let updateCatalog: (nextCatalog: readonly ProcessCatalogDescriptor[]) => void = () => {}
   const dispose = createRoot((rootDispose) => {
     const [model, setModel] = createSignal(initialModel)
     const [lane, setLane] = createSignal<ProcessStudioLane>(currentDraft.lane)
     const [source, setSource] = createSignal(currentDraft.metadata.source)
     const [selected, setSelected] = createSignal(initialModel.nodes[0]?.id ?? "")
     const [issues, setIssues] = createSignal(validateDesignerModel(initialModel))
+    const [catalogState, setCatalogState] = createSignal(catalog)
+    updateCatalog = setCatalogState
     const update = (
       next: DesignerModel,
       nextLane: ProcessStudioLane = lane(),
       nextSource: ProcessDraftSource = source(),
     ) => {
+      const nextIssues = validateDesignerModel(next)
       setModel(next)
-      setIssues(validateDesignerModel(next))
+      setIssues(nextIssues)
       currentDraft = {
         ...currentDraft,
         model: next,
@@ -460,7 +462,11 @@ export const mountProcessDesigner = (
         ),
       mapping: (id, value) =>
         update(applyDesignerAction(model(), { _tag: "add_mapping", nodeId: id, mapping: value })),
-      validate: () => setIssues(validateDesignerModel(model())),
+      validate: () => {
+        const nextIssues = validateDesignerModel(model())
+        setIssues(nextIssues)
+        normalized.onValidate?.(model(), nextIssues)
+      },
       lane: (next) => {
         setLane(next)
         currentDraft = { ...currentDraft, lane: next }
@@ -483,9 +489,12 @@ export const mountProcessDesigner = (
         },
         selected: selected(),
         issues: issues(),
+        catalog: catalogState(),
       }),
       (current) =>
-        root.replaceChildren(view(current.draft, current.selected, current.issues, handlers)),
+        root.replaceChildren(
+          view(current.draft, current.selected, current.issues, current.catalog, handlers),
+        ),
     )
     return rootDispose
   })
@@ -494,6 +503,7 @@ export const mountProcessDesigner = (
       dispose()
       root.replaceChildren()
     },
+    setCatalog: (nextCatalog) => updateCatalog(nextCatalog),
     readIr: () => currentIr,
     readDraft: () => currentDraft,
   }

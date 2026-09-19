@@ -1,14 +1,8 @@
-import type {
-  ProcessPackCapabilityReferenceType,
-  ProcessPackCapabilityResolutionType,
-  ProcessPackType,
-} from "../../../../../modules/process/mod.ts"
 import {
   applyDesignerAction,
   type DesignerModel,
   makeInitialDesignerModel,
   serializeProcessIr,
-  setNodeCapability,
   toProcessIr,
 } from "./designer-model.ts"
 
@@ -22,13 +16,13 @@ export type ProcessStudioLane = (typeof ProcessStudioLanes)[number]
 export const ProcessStudioLaneLabels: Readonly<Record<ProcessStudioLane, string>> = {
   copilot_draft: "Copilot draft",
   bounded_execution: "Bounded execution",
-  templates: "Templates",
+  templates: "Starter drafts",
 }
 
 export const ProcessStudioLaneDescriptions: Readonly<Record<ProcessStudioLane, string>> = {
   copilot_draft: "Draft-only assistance; no provider execution.",
   bounded_execution: "Allowlisted actions with review and runtime gates.",
-  templates: "Curated packs and business patterns remain editable drafts.",
+  templates: "Structural starter drafts; catalog authority is loaded from the backend.",
 }
 
 export const ProcessDraftSources = ["human", "copilot", "template"] as const
@@ -45,11 +39,6 @@ export type ProcessStudioDraft = {
   readonly model: DesignerModel
 }
 
-export type ProcessStudioCapabilityId =
-  | "sales.order.confirm"
-  | "inventory.stock.adjust"
-  | "accounting.revenue.post"
-
 export type ProcessStudioTemplate = {
   readonly id: string
   readonly version: number
@@ -58,108 +47,49 @@ export type ProcessStudioTemplate = {
   readonly model: DesignerModel
 }
 
-export type ProcessStudioPack = ProcessPackType
-export type ProcessStudioPackResolution = ProcessPackCapabilityResolutionType
-
-const withCapability = (
-  model: DesignerModel,
-  id: ProcessStudioCapabilityId,
-): DesignerModel => {
-  const next = applyDesignerAction(model, { _tag: "add_node", kind: "DomainCommand" })
-  const node = [...next.nodes].reverse().find((candidate) => candidate.kind === "DomainCommand")
-  return node === undefined
-    ? next
-    : setNodeCapability(next, node.id, { kind: "DomainAction", id, version: 1 })
-}
-
 const templateModel = (
   definitionId: string,
-  capabilities: readonly ProcessStudioCapabilityId[],
+  kind: "HumanTask" | "Decision" | "Timer",
+  label: string,
 ): DesignerModel => {
-  let model = { ...makeInitialDesignerModel(), definitionId }
-  for (const capability of capabilities) model = withCapability(model, capability)
-  return model
+  const initial = makeInitialDesignerModel()
+  const withNode = applyDesignerAction(initial, { _tag: "add_node", kind })
+  const node = withNode.nodes.find((candidate) => candidate.kind === kind)
+  return node === undefined ? withNode : {
+    ...withNode,
+    definitionId,
+    nodes: withNode.nodes.map((candidate) =>
+      candidate.id === node.id ? { ...candidate, label } : candidate
+    ),
+  }
 }
 
 export const ProcessStudioTemplates: readonly ProcessStudioTemplate[] = [
   {
-    id: "order-confirmation",
+    id: "review-draft",
     version: 1,
-    name: "Order confirmation",
-    description: "Confirm an order and post its owner-derived revenue.",
-    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214124", [
-      "sales.order.confirm",
-      "accounting.revenue.post",
-    ]),
+    name: "Review draft",
+    description: "A human review step ready for backend catalog binding.",
+    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214124", "HumanTask", "Review draft"),
   },
   {
-    id: "stock-correction",
+    id: "decision-draft",
     version: 1,
-    name: "Stock correction",
-    description: "Start with an idempotent inventory correction draft.",
-    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214125", ["inventory.stock.adjust"]),
+    name: "Decision draft",
+    description: "A deterministic decision step with no embedded business authority.",
+    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214125", "Decision", "Evaluate condition"),
   },
   {
-    id: "revenue-posting",
+    id: "timer-draft",
     version: 1,
-    name: "Revenue posting",
-    description: "Prepare a confirmed-order revenue posting draft.",
-    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214126", ["accounting.revenue.post"]),
+    name: "Timer draft",
+    description: "A bounded timer handoff for a governed process definition.",
+    model: templateModel("018f3f77-0c5a-7cc0-8b62-6a163d214126", "Timer", "Wait for handoff"),
   },
 ]
 
 export const getProcessStudioTemplate = (id: string): DesignerModel | undefined =>
   ProcessStudioTemplates.find((template) => template.id === id)?.model
-
-export const ProcessStudioPacks: readonly ProcessStudioPack[] = [{
-  id: "distribution.starter",
-  version: 1,
-  stability: "EXPERIMENTAL",
-  profileId: "distribution",
-  name: "Distribution starter pack",
-  description: "Curated process drafts for a distribution company.",
-  processTemplateIds: ["order-confirmation", "stock-correction", "revenue-posting"],
-  requiredCapabilities: [
-    { kind: "DomainAction", id: "sales.order.confirm", version: 1 },
-    { kind: "DomainAction", id: "inventory.stock.adjust", version: 1 },
-    { kind: "DomainAction", id: "accounting.revenue.post", version: 1 },
-  ],
-  optionalCapabilities: [],
-  decisions: [],
-  forms: [],
-  configuration: [],
-  recommendedPolicies: [],
-  projections: [],
-  documentation: [{
-    id: "distribution.starter.overview",
-    version: 1,
-    title: "Distribution starter guide",
-    description: "Configure, validate, approve, and release the included drafts.",
-  }],
-}]
-
-export const getProcessStudioPack = (id: string): ProcessStudioPack | undefined =>
-  ProcessStudioPacks.find((pack) => pack.id === id)
-
-const sameCapability = (
-  left: ProcessPackCapabilityReferenceType,
-  right: ProcessPackCapabilityReferenceType,
-): boolean => left.kind === right.kind && left.id === right.id && left.version === right.version
-
-export const resolveProcessStudioPackCapabilities = (
-  pack: ProcessStudioPack,
-  available: readonly ProcessPackCapabilityReferenceType[],
-): ProcessStudioPackResolution => {
-  const missingRequiredCapabilities = pack.requiredCapabilities.filter(
-    (required) => !available.some((candidate) => sameCapability(required, candidate)),
-  )
-  return {
-    packId: pack.id,
-    packVersion: pack.version,
-    status: missingRequiredCapabilities.length === 0 ? "ready" : "missing_required_capabilities",
-    missingRequiredCapabilities,
-  }
-}
 
 export const makeProcessStudioDraft = (
   model: DesignerModel,

@@ -1,4 +1,4 @@
-import { createUniqueId } from "solid-js"
+import { createUniqueId, untrack } from "solid-js"
 import type { JSX } from "@solidjs/web"
 import { css } from "../generated/css/index.js"
 
@@ -21,24 +21,25 @@ const styles = {
 }
 
 export function FormField(props: FormFieldProps) {
-  const id = props.id ?? createUniqueId()
+  const id = untrack(() => props.id) ?? createUniqueId()
+  const children = untrack(() => props.children)
   const descriptionId = `${id}-help`
   const errorId = `${id}-error`
-  const describedBy =
+  const describedBy = () =>
     [props.helperText && descriptionId, props.error && errorId].filter(Boolean).join(" ") ||
     undefined
-  const controlProps = {
+  const controlProps = () => ({
     id,
-    "aria-describedby": describedBy,
+    "aria-describedby": describedBy(),
     "aria-invalid": props.error ? "true" as const : undefined,
-  }
+  })
   return (
     <div class={styles.root}>
       <label class={styles.label} for={id}>
         {props.label}
-        {props.required ? " *" : ""}
+        {props.required && <span aria-hidden="true">*</span>}
       </label>
-      {typeof props.children === "function" ? props.children(controlProps) : props.children}
+      {typeof children === "function" ? children(controlProps()) : children}
       {props.helperText && <div class={styles.help} id={descriptionId}>{props.helperText}</div>}
       {props.error && <div class={styles.error} id={errorId} role="alert">{props.error}</div>}
     </div>

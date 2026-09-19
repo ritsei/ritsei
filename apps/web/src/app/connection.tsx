@@ -1,85 +1,106 @@
-import { createSignal, useContext } from "solid-js"
-import { useNavigate } from "@solidjs/router"
-import * as Schema from "effect/Schema"
-import * as Result from "effect/Result"
-import { Session } from "../shared/session.ts"
-import { SessionContext } from "./session.ts"
+import { createSignal, onSettled, Show, useContext } from "solid-js"
+import type { AuthConfiguration } from "../shared/contracts/generated/auth.ts"
 import { layout } from "../ui/foundations/layout.ts"
 import { Button } from "../ui/primitives/button.tsx"
-import { control } from "../ui/recipes/control.ts"
 import { surface } from "../ui/recipes/surface.ts"
+import {
+  AuthClientFailure,
+  beginOidcLogin,
+  devLogin,
+  getAuthConfiguration,
+  getAuthSession,
+} from "./auth-client.ts"
+import { SessionContext } from "./session.ts"
+import { useNavigate } from "@solidjs/router"
 
 export function Connection() {
   const session = useContext(SessionContext)
   const navigate = useNavigate()
-  const [invalid, setInvalid] = createSignal(false)
-  let tenantInput: HTMLInputElement | undefined
+  const [configuration, setConfiguration] = createSignal<AuthConfiguration | null>(null)
+  const [loading, setLoading] = createSignal(true)
+  const [pending, setPending] = createSignal(false)
+  const [message, setMessage] = createSignal("")
+
+  onSettled(() => {
+    void getAuthConfiguration().then(setConfiguration).catch(() => {
+      setMessage("Authentication configuration is unavailable.")
+    }).finally(() => setLoading(false))
+  })
+
+  const connect = async () => {
+    setPending(true)
+    setMessage("")
+    try {
+      const login = await devLogin()
+      const authenticated = await getAuthSession(login.token)
+      const tenant = authenticated.activeTenant ?? authenticated.memberships[0]
+      if (tenant === undefined) {
+        setMessage("Your account has no active tenant membership.")
+        return
+      }
+      session.replace({ token: login.token, tenantId: tenant.tenantId }, authenticated)
+      navigate("/")
+    } catch (error) {
+      setMessage(
+        error instanceof AuthClientFailure && error.kind === "unavailable"
+          ? "Authentication service is unavailable."
+          : "Sign in could not be completed. Try again.",
+      )
+    } finally {
+      setPending(false)
+    }
+  }
+
+  const oidc = async () => {
+    setPending(true)
+    setMessage("")
+    try {
+      const current = configuration()
+      if (current === null) throw new AuthClientFailure("invalid-response")
+      await beginOidcLogin(current)
+    } catch {
+      setPending(false)
+      setMessage("The external sign-in configuration is incomplete.")
+    }
+  }
+
   return (
     <section class={layout.stack} aria-labelledby="connection-heading">
-      <h1 id="connection-heading">Connect a session</h1>
+      <h1 id="connection-heading">Sign in to RITSEI</h1>
       <p>
-        This development preview uses an existing session. Sign-in and tenant provisioning are not
-        available here.
+        Authentication is handled by the configured identity provider. Tenant access is resolved
+        from your RITSEI memberships.
       </p>
-      <form
-        class={surface()}
-        onSubmit={(event) => {
-          event.preventDefault()
-          const form = event.currentTarget
-          const data = new FormData(form)
-          const decoded = Schema.decodeUnknownResult(Session)({
-            tenantId: data.get("tenant"),
-            token: data.get("token"),
-          })
-          if (Result.isFailure(decoded)) {
-            setInvalid(true)
-            tenantInput?.focus()
-            return
-          }
-          session.replace(decoded.success)
-          form.reset()
-          setInvalid(false)
-          navigate("/user-accounts")
-        }}
-      >
-        <div class={layout.stack}>
-          <label for="tenant">Tenant ID</label>
-          <input
-            ref={(element) => tenantInput = element}
-            class={control({ kind: "input" })}
-            id="tenant"
-            name="tenant"
-            required
-            maxlength="36"
-            aria-invalid={invalid() ? "true" : "false"}
-            aria-describedby="connection-help connection-error"
-          />
-          <label for="token">Session token</label>
-          <input
-            class={control({ kind: "input" })}
-            id="token"
-            name="token"
-            type="password"
-            required
-            maxlength="4096"
-            autocomplete="off"
-            aria-invalid={invalid() ? "true" : "false"}
-            aria-describedby="connection-help connection-error"
-          />
-          <p id="connection-help">
-            Credentials stay in memory only. Disconnecting or reloading clears them. The server
-            checks access for every request.
-          </p>
-          <p id="connection-error" role="alert">
-            {invalid() ? "Enter a valid tenant UUID and a token without spaces." : ""}
-          </p>
-          <div>
-            <Button variant="primary" type="submit">
-              Connect
+      <section class={[surface(), layout.stack]} aria-live="polite">
+        <Show
+          when={!loading()}
+          fallback={<p role="status">Loading authentication configuration…</p>}
+        >
+          <Show
+            when={configuration()?.profile === "oidc"}
+            fallback={
+              <>
+                <p>Local transitional authentication is enabled for development.</p>
+                <Button
+                  variant="primary"
+                  type="button"
+                  loading={pending()}
+                  onClick={() => void connect()}
+                >
+                  Sign in locally
+                </Button>
+              </>
+            }
+          >
+            <Button variant="primary" type="button" loading={pending()} onClick={() => void oidc()}>
+              Sign in with identity provider
             </Button>
-          </div>
-        </div>
-      </form>
+          </Show>
+        </Show>
+        <Show when={message()}>
+          <p role="alert">{message()}</p>
+        </Show>
+      </section>
     </section>
   )
 }

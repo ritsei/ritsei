@@ -8,6 +8,7 @@ export interface DataColumn<Row> {
   readonly id: string
   readonly header: JSX.Element
   readonly cell: (row: Row, index: number) => JSX.Element
+  readonly rowHeader?: boolean
   readonly align?: "start" | "end"
 }
 
@@ -16,9 +17,14 @@ export interface DataTableProps<Row> {
   readonly columns: readonly DataColumn<Row>[]
   readonly rows: readonly Row[]
   readonly getRowId?: (row: Row, index: number) => string
+  readonly getRowClass?: (row: Row, index: number) => JSX.ClassValue
   readonly loading?: boolean
   readonly error?: JSX.Element
   readonly empty?: JSX.Element
+  readonly surface?: boolean
+  readonly tableClass?: JSX.ClassValue
+  readonly captionClass?: JSX.ClassValue
+  readonly cellClass?: JSX.ClassValue
   readonly class?: JSX.ClassValue
 }
 
@@ -34,13 +40,20 @@ const cellClass = (align: DataColumn<unknown>["align"]) => align === "end" ? sty
  */
 export function DataTable<Row>(props: DataTableProps<Row>) {
   return (
-    <div class={[surface(), layout.scroll, props.class]}>
-      <table aria-busy={props.loading ? "true" : undefined}>
-        <caption>{props.caption}</caption>
+    <div class={[props.surface === false ? undefined : surface(), layout.scroll, props.class]}>
+      <table class={props.tableClass} aria-busy={props.loading ? "true" : undefined}>
+        <caption class={props.captionClass}>{props.caption}</caption>
         <thead>
           <tr>
             <For each={props.columns}>
-              {(column) => <th scope="col" class={cellClass(column.align)}>{column.header}</th>}
+              {(column) => (
+                <th
+                  scope="col"
+                  class={[props.cellClass, cellClass(column.align)]}
+                >
+                  {column.header}
+                </th>
+              )}
             </For>
           </tr>
         </thead>
@@ -59,10 +72,27 @@ export function DataTable<Row>(props: DataTableProps<Row>) {
           >
             <For each={props.rows}>
               {(row, index) => (
-                <tr data-row-id={props.getRowId?.(row, index())}>
+                <tr
+                  class={props.getRowClass?.(row, index())}
+                  data-row-id={props.getRowId?.(row, index())}
+                >
                   <For each={props.columns}>
                     {(column) => (
-                      <td class={cellClass(column.align)}>{column.cell(row, index())}</td>
+                      <Show
+                        when={column.rowHeader}
+                        fallback={
+                          <td class={[props.cellClass, cellClass(column.align)]}>
+                            {column.cell(row, index())}
+                          </td>
+                        }
+                      >
+                        <th
+                          scope="row"
+                          class={[props.cellClass, cellClass(column.align)]}
+                        >
+                          {column.cell(row, index())}
+                        </th>
+                      </Show>
                     )}
                   </For>
                 </tr>

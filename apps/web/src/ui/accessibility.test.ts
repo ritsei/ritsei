@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import { AxeBuilder } from "@axe-core/playwright"
-import { builtApp } from "../../../../tests/frontend/browser.ts"
+import { builtApp, mockLocalAuth } from "../../../../tests/frontend/browser.ts"
 
 it.effect(
   "keeps the shell keyboard-accessible, labeled, responsive, and free of automated axe violations",
@@ -23,25 +23,23 @@ it.effect(
           forcedColors: "active",
         })
         assert.isTrue(
-          await page.getByRole("button", { name: "Connect", exact: true })
+          await page.getByRole("button", { name: "Sign in locally", exact: true })
             .isVisible(),
         )
-        assert.isNotNull(
-          await page.getByLabel("Tenant ID", { exact: true }).getAttribute(
-            "id",
-          ),
-        )
-        assert.isNotNull(
-          await page.getByLabel("Session token", { exact: true }).getAttribute(
-            "id",
-          ),
+        assert.equal(await page.getByLabel("Tenant ID", { exact: true }).count(), 0)
+        assert.equal(await page.getByLabel("Session token", { exact: true }).count(), 0)
+        await mockLocalAuth(page)
+        await page.getByRole("button", { name: "Sign in locally", exact: true }).click()
+        await page.getByRole("heading", { name: "My work", exact: true }).waitFor()
+        assert.isTrue(
+          await page.getByRole("button", { name: "Dark theme", exact: true }).isVisible(),
         )
         assert.equal(
           await page.evaluate(() => document.documentElement.scrollWidth <= globalThis.innerWidth),
           true,
         )
 
-        await page.keyboard.press("Tab")
+        await page.getByRole("link", { name: "Skip to content", exact: true }).focus()
         assert.equal(
           await page.evaluate(() => document.activeElement?.getAttribute("href")),
           "#main",
@@ -51,11 +49,10 @@ it.effect(
           await page.evaluate(() => document.activeElement?.getAttribute("aria-label")),
           "RITSEI home",
         )
-        await page.getByLabel("Tenant ID", { exact: true }).focus()
-        await page.keyboard.press("Tab")
+        await page.getByRole("button", { name: "Dark theme", exact: true }).focus()
         assert.equal(
-          await page.evaluate(() => document.activeElement?.id),
-          "token",
+          await page.evaluate(() => document.activeElement?.textContent),
+          "Dark theme",
         )
         assert.deepEqual(errors, [])
       })
@@ -88,21 +85,12 @@ it.effect(
         assert.equal(await page.locator("html").getAttribute("lang"), "en")
         assert.isTrue(await page.getByRole("main").isVisible())
         assert.equal(
-          await page.getByRole("heading", { name: "Connect a session" }).count(),
+          await page.getByRole("heading", { name: "Sign in to RITSEI", exact: true }).count(),
           1,
         )
-        assert.equal(
-          await page.getByLabel("Tenant ID", { exact: true }).getAttribute("aria-describedby"),
-          "connection-help connection-error",
-        )
-
-        const tenant = page.getByLabel("Tenant ID", { exact: true })
-        await tenant.fill("not-a-uuid")
-        await page.getByLabel("Session token", { exact: true }).fill("token")
-        await page.getByRole("button", { name: "Connect", exact: true }).click()
-        assert.equal(await tenant.getAttribute("aria-invalid"), "true")
-        assert.equal(await page.evaluate(() => document.activeElement?.id), "tenant")
-        assert.isTrue(await page.getByRole("alert").isVisible())
+        await mockLocalAuth(page)
+        await page.getByRole("button", { name: "Sign in locally", exact: true }).click()
+        await page.getByRole("heading", { name: "My work", exact: true }).waitFor()
 
         const start = performance.now()
         await page.getByRole("button", { name: "Dark theme", exact: true }).click()
@@ -113,8 +101,10 @@ it.effect(
         await page.evaluate(() => {
           document.documentElement.style.zoom = "2"
         })
-        assert.isTrue(await tenant.isVisible())
-        assert.isTrue(await page.getByRole("button", { name: "Connect", exact: true }).isVisible())
+        assert.isTrue(await page.getByRole("heading", { name: "My work", exact: true }).isVisible())
+        assert.isTrue(
+          await page.getByRole("button", { name: "Dark theme", exact: true }).isVisible(),
+        )
         await page.evaluate(() => {
           document.documentElement.style.zoom = ""
         })

@@ -1,8 +1,18 @@
 import { createContext } from "solid-js"
+import type { AuthSession } from "../shared/contracts/generated/auth.ts"
 import type { Session } from "../shared/session.ts"
 
-// A new connection replaces the whole runtime/cache subtree, even for the same tenant.
-export const SessionContext = createContext<{
+export type TenantOption = AuthSession["memberships"][number]
+export type AuthenticatedUser = AuthSession["user"]
+export type Capability = AuthSession["capabilities"][number]
+
+type SessionContextValue = {
   readonly current: () => Session | null
-  readonly replace: (session: Session | null) => void
-}>()
+  readonly user: () => AuthenticatedUser | null
+  readonly tenants: () => readonly TenantOption[]
+  readonly capabilities: () => readonly Capability[]
+  readonly replace: (session: Session | null, details?: AuthSession) => void
+  readonly selectTenant: (tenantId: string) => void
+}
+
+export const SessionContext = createContext<SessionContextValue>()

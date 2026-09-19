@@ -40,8 +40,8 @@ The comparison that matters isn't Solid 1.x — it's that these seams don't exis
   system is.
 - **Matching execution models.** Solid flights and Effect fibers are both structured and pull-based
   — they start, supersede, and dispose on the same schedule, and both suspend on generator yields.
-  That's why the integration is protocol-level (async iteration on the read path, `yield*`
-  delegation on the action path) rather than a binding library: neither side wraps or schedules the
+  That's why the integration is protocol-level (async iteration on the read path, plain `yield`
+  boundaries on the action path) rather than a binding library: neither side wraps or schedules the
   other. Frameworks whose unit of work is "re-render the component" need the atom/registry layer
   precisely because their lifecycle and Effect's don't line up anywhere.
 - **A tree to put services in.** Effect's requirement channel (`R`) needs someone to provide
@@ -82,27 +82,29 @@ what connects Solid's flight lifecycle to Effect's fiber lifecycle.
 ```tsx
 const placeOrder = effectAction(function* (items, decline) {
   setPhase("reserving");
-  const reservation = yield* reserveInventory(items); // each yield* = one transaction step,
-  setPhase("charging"); //                               run as an interruptible fiber
-  const charge = yield* chargeCard(total, decline);
+  const reservation = yield reserveInventory(items); // each yield = one transaction step,
+  setPhase("charging"); //                             run as an interruptible fiber
+  const charge = yield chargeCard(total, decline);
   ...
 });
 ```
 
 Solid's `action` runs a generator as a transaction: writes between yields commit atomically per
-step, and `createOptimistic` writes revert when the action settles. Effect values are iterable (that
-is how `Effect.gen` works), so `yield*` inside a plain generator delegates the Effect out to
-`effectAction`'s driver loop **with full inferred types** — the saga reads exactly like
-`Effect.gen`, but each `yield*` is also a transaction boundary.
+step, and `createOptimistic` writes revert when the action settles. The action generator yields each
+Effect directly to `effectAction`'s driver loop **with full inferred types** — each `yield` is both
+an interruptible fiber step and a transaction boundary. `yield*` remains Effect's own generator
+protocol and is not used for action steps because Effect v4's single-shot iterator intentionally
+has no `throw` method for injected action failures.
 
 Two properties fall out:
 
 - **The `await` hazard is unexpressible.** `action` documents that `await` escapes the transaction
-  (writes after it commit immediately) and asks for a bare `yield` before post-await writes. Effect
-  programs have no `await` — every suspension is `yield*`, which is exactly the transaction-safe
-  suspension point. The discipline Effect enforces is the discipline the transaction wants.
+  (writes after it commit immediately) and asks for a bare `yield` before post-await writes. The
+  action driver uses a bare `yield` for every Effect suspension, which is exactly the
+  transaction-safe suspension point. The discipline Effect enforces is the discipline the
+  transaction wants.
 - **Cancellation composes into a saga.** Cancel (or a typed `CardDeclinedError`) surfaces inside the
-  generator as a throw at the in-flight `yield*`. The catch block runs compensations in reverse
+  generator as a throw at the in-flight `yield`. The catch block runs compensations in reverse
   order of what committed (refund the charge, release the inventory hold) — as further transaction
   steps — while the interrupted step's own `onInterrupt` finalizers cover mid-step cleanup (voiding
   a half-done authorization). Rethrowing rejects the action, which reverts the optimistic UI
@@ -113,7 +115,7 @@ double-submit cancels (with compensation) rather than silently racing.
 
 ## Honest notes
 
-- Each `yield*`-ed step runs as its **own fiber**. Cross-step compensation therefore lives in the
+- Each yielded step runs as its **own fiber**. Cross-step compensation therefore lives in the
   generator's catch block (the saga coordinator), not in Effect finalizers — finalizers only cover
   the step they're attached to. That split is deliberate and arguably clearer, but it is a
   difference from running one big `Effect.gen` program.

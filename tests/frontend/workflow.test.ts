@@ -1,18 +1,21 @@
 import { assert, it } from "@effect/vitest"
+import { AxeBuilder } from "@axe-core/playwright"
 import * as Effect from "effect/Effect"
 import type { Page, Route } from "playwright"
-import { builtApp } from "./browser.ts"
+import { builtApp, connectToTenant } from "./browser.ts"
 
 const tenantId = "01900000-0000-7000-8000-000000000010"
 const accountId = "01900000-0000-7000-8000-000000000001"
+const createdAccountId = "01900000-0000-7000-8000-000000000002"
 const originalEmail = "operator@example.com"
+const createdEmail = "new.operator@example.com"
 const updatedEmail = "operator.renamed@example.com"
 
-const account = (email: string) => ({
-  id: accountId,
-  email,
-  status: "active" as const,
-})
+const account = (
+  email: string,
+  status: "active" | "disabled" = "active",
+  id = accountId,
+) => ({ id, email, status })
 
 const fulfillJson = (route: Route, status: number, body: unknown) =>
   route.fulfill({
@@ -21,36 +24,56 @@ const fulfillJson = (route: Route, status: number, body: unknown) =>
     body: JSON.stringify(body),
   })
 
-const connect = async (page: Page, url: string) => {
-  await page.goto(url)
-  await page.getByLabel("Tenant ID", { exact: true }).fill(tenantId)
-  await page.getByLabel("Session token", { exact: true }).fill("test-session")
-  await page.getByRole("button", { name: "Connect", exact: true }).click()
-  await page.getByRole("heading", { name: "User accounts", exact: true })
-    .waitFor()
-}
+const connect = (page: Page, url: string) =>
+  connectToTenant(page, url, "test-session", tenantId, "User accounts")
 
 it.effect(
-  "lists accounts, updates an email, refreshes the query, and restores focus",
+  "creates, reads, and updates tenant-linked accounts",
   () =>
     Effect.gen(function* () {
       const { page, url, errors } = yield* builtApp
       let currentEmail = originalEmail
+      const currentStatus: "active" | "disabled" = "active"
+      let createBody: unknown
       let patchBody: unknown
       let requestHeaders: Record<string, string> | undefined
-      let getCount = 0
+      let listCount = 0
+      const records = () => [
+        account(currentEmail, currentStatus),
+        account(createdEmail, "active", createdAccountId),
+      ]
+      let created = false
 
       yield* Effect.promise(async () => {
-        await page.route("**/api/user-accounts", (route) => {
-          getCount += 1
-          requestHeaders = route.request().headers()
-          return fulfillJson(route, 200, [account(currentEmail)])
-        })
-        await page.route("**/api/user-accounts/*", (route) => {
-          patchBody = route.request().postDataJSON()
-          requestHeaders = route.request().headers()
-          currentEmail = updatedEmail
-          return fulfillJson(route, 200, account(currentEmail))
+        await page.route("**/api/user-accounts**", (route) => {
+          const request = route.request()
+          const path = new URL(request.url()).pathname.replace(/^\/api/, "")
+          const method = request.method()
+          requestHeaders = request.headers()
+
+          if (path === "/user-accounts") {
+            if (method === "POST") {
+              createBody = request.postDataJSON()
+              created = true
+              return fulfillJson(
+                route,
+                201,
+                account(createdEmail, "active", createdAccountId),
+              )
+            }
+            listCount += 1
+            return fulfillJson(
+              route,
+              200,
+              created ? records() : [account(currentEmail, currentStatus)],
+            )
+          }
+          if (method === "PATCH") {
+            patchBody = request.postDataJSON()
+            currentEmail = updatedEmail
+            return fulfillJson(route, 200, account(currentEmail, currentStatus))
+          }
+          return fulfillJson(route, 200, account(currentEmail, currentStatus))
         })
 
         await connect(page, url)
@@ -58,36 +81,78 @@ it.effect(
           .waitFor()
         assert.equal(requestHeaders?.authorization, "Bearer test-session")
         assert.equal(requestHeaders?.["x-tenant-id"], tenantId)
-        assert.equal(getCount, 1)
+        assert.equal(listCount, 1)
 
-        const edit = page.getByRole("button", {
-          name: `Edit email for ${originalEmail}`,
+        const createTrigger = page.getByRole("button", {
+          name: "Create account",
           exact: true,
         })
+        await createTrigger.click()
+        const createDialog = page.getByRole("dialog")
+        await createDialog.getByRole("heading", { name: "Create user account" })
+          .waitFor()
+        const dialogAccessibility = await new AxeBuilder({ page }).withTags([
+          "wcag2a",
+          "wcag2aa",
+        ]).analyze()
+        assert.deepEqual(dialogAccessibility.violations, [])
+        await page.keyboard.press("Escape")
+        await createDialog.waitFor({ state: "hidden" })
+        assert.isTrue(
+          await createTrigger.evaluate((node) => document.activeElement === node),
+        )
+        await createTrigger.click()
+        await createDialog.getByRole("textbox", { name: "Email", exact: true })
+          .fill(createdEmail)
+        await createDialog.getByRole("button", { name: "Create account", exact: true })
+          .click()
+        await page.getByRole("cell", { name: createdEmail, exact: true }).waitFor()
+        assert.deepEqual(createBody, { email: createdEmail })
+
+        await page.getByRole("link", {
+          name: `Open account for ${originalEmail}`,
+          exact: true,
+        }).click()
+        await page.getByRole("heading", { name: "Account detail", exact: true })
+          .waitFor()
+        assert.equal(new URL(page.url()).pathname, `/user-accounts/${accountId}`)
+        assert.isNotNull(
+          await page.getByRole("link", { name: "User accounts", exact: true })
+            .getAttribute("data-active"),
+        )
+        assert.isNotNull(
+          await page.getByRole("link", { name: "Accounts", exact: true })
+            .getAttribute("data-active"),
+        )
+
+        const edit = page.getByRole("button", { name: "Edit email", exact: true })
         await edit.click()
-        const email = page.getByRole("textbox", { name: "Email", exact: true })
-        await email.waitFor()
-        await email.fill(updatedEmail)
+        await page.getByRole("button", { name: "Close editor", exact: true })
+          .click()
+        assert.isTrue(
+          await edit.evaluate((node) => document.activeElement === node),
+        )
+
+        await edit.click()
+        await page.getByRole("textbox", { name: "Email", exact: true }).fill(
+          updatedEmail,
+        )
         await page.getByRole("button", { name: "Save email", exact: true })
           .click()
-        await page.getByRole("status").filter({ hasText: "Email saved" })
-          .waitFor()
         await page.getByRole("cell", { name: updatedEmail, exact: true })
           .waitFor()
         assert.deepEqual(patchBody, { email: updatedEmail })
-        assert.isTrue(getCount >= 2)
 
-        await page.getByRole("button", {
-          name: `Edit email for ${updatedEmail}`,
-          exact: true,
-        }).click()
-        await page.getByRole("button", { name: "Close editor", exact: true })
-          .click()
-        const restored = await page.getByRole("button", {
-          name: `Edit email for ${updatedEmail}`,
-          exact: true,
-        }).evaluate((node) => document.activeElement === node)
-        assert.isTrue(restored)
+        assert.equal(
+          await page.getByRole("button", { name: /^(Disable|Enable) account$/ }).count(),
+          0,
+        )
+        assert.isTrue(listCount >= 3)
+        const accessibility = await new AxeBuilder({ page }).withTags([
+          "wcag2a",
+          "wcag2aa",
+        ]).analyze()
+        assert.deepEqual(accessibility.violations, [])
         assert.deepEqual(errors, [])
       })
     }),
@@ -99,41 +164,44 @@ it.effect(
   () =>
     Effect.gen(function* () {
       const { page, url, errors } = yield* builtApp
-      let mode: "forbidden" | "malformed" | "unknown-outcome" = "forbidden"
+      let mode:
+        | "forbidden-list"
+        | "malformed-list"
+        | "loaded"
+        | "update-unknown" = "forbidden-list"
 
       yield* Effect.promise(async () => {
-        await page.route("**/api/user-accounts", (route) => {
-          if (mode === "forbidden") {
-            return fulfillJson(route, 403, {
-              _tag: "ApiForbidden",
-              code: "forbidden",
-            })
-          } else if (mode === "malformed") {
-            return fulfillJson(route, 200, { account: "not-an-array" })
+        await page.route("**/api/user-accounts**", (route) => {
+          const request = route.request()
+          const path = new URL(request.url()).pathname.replace(/^\/api/, "")
+          if (path === "/user-accounts") {
+            if (mode === "forbidden-list") {
+              return fulfillJson(route, 403, {
+                _tag: "ApiForbidden",
+                code: "forbidden",
+              })
+            }
+            if (mode === "malformed-list") {
+              return fulfillJson(route, 200, { account: "not-an-array" })
+            }
+            return fulfillJson(route, 200, [account(originalEmail)])
           }
-          return fulfillJson(route, 200, [account(originalEmail)])
-        })
-        await page.route("**/api/user-accounts/*", async (route) => {
-          if (mode === "unknown-outcome") {
-            await route.abort("connectionreset")
-          } else {
-            fulfillJson(route, 503, {
-              _tag: "ApiServiceUnavailable",
-              code: "service_unavailable",
-            })
+          if (request.method() === "PATCH" && mode === "update-unknown") {
+            return route.abort("connectionreset")
           }
+          return fulfillJson(route, 200, account(originalEmail))
         })
 
         await connect(page, url)
         await page.getByRole("alert").filter({ hasText: "permission" })
           .waitFor()
         assert.equal(
-          await page.getByRole("button", { name: "Save email", exact: true })
+          await page.getByRole("button", { name: "Create account", exact: true })
             .count(),
-          0,
+          1,
         )
 
-        mode = "malformed"
+        mode = "malformed-list"
         await page.getByRole("button", {
           name: "Try loading again",
           exact: true,
@@ -142,17 +210,23 @@ it.effect(
           hasText: "invalid or oversized response",
         }).waitFor()
 
-        mode = "unknown-outcome"
+        mode = "loaded"
         await page.getByRole("button", {
           name: "Try loading again",
           exact: true,
         }).click()
         await page.getByRole("cell", { name: originalEmail, exact: true })
           .waitFor()
-        await page.getByRole("button", {
-          name: `Edit email for ${originalEmail}`,
+        await page.getByRole("link", {
+          name: `Open account for ${originalEmail}`,
           exact: true,
         }).click()
+        await page.getByRole("heading", { name: "Account detail", exact: true })
+          .waitFor()
+
+        mode = "update-unknown"
+        await page.getByRole("button", { name: "Edit email", exact: true })
+          .click()
         await page.getByRole("textbox", { name: "Email", exact: true }).fill(
           updatedEmail,
         )
@@ -167,7 +241,7 @@ it.effect(
         await page.getByRole("button", {
           name: "Reload before retrying",
           exact: true,
-        }).waitFor()
+        }).click()
         assert.deepEqual(errors, [])
       })
     }),

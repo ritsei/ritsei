@@ -104,6 +104,7 @@ export default defineConfig({
           iconXl: { value: "24px" },
           iconDisplay: { value: "32px" },
           dialog: { value: "calc(100% - 2rem)" },
+          shellViewport: { value: "calc(100dvh - 3rem)" },
         },
         zIndex: {
           base: { value: "0" },
@@ -141,8 +142,8 @@ export default defineConfig({
             default: { value: { base: "{colors.ink}", _dark: "{colors.paper}" } },
             muted: { value: { base: "{colors.slate}", _dark: "#BDC9D0" } },
             subtle: { value: { base: "#738089", _dark: "#8A9AA5" } },
-            success: { value: { base: "#2E7D5B", _dark: "#8FD1AE" } },
-            warning: { value: { base: "#9A6500", _dark: "#F3C55E" } },
+            success: { value: { base: "#296F51", _dark: "#8FD1AE" } },
+            warning: { value: { base: "#8F5F00", _dark: "#F3C55E" } },
             danger: { value: { base: "#A52C22", _dark: "#FFAEA5" } },
             info: { value: { base: "#3862B6", _dark: "#9AB7FF" } },
             disabled: { value: { base: "#8B959B", _dark: "#6F7B83" } },
@@ -331,6 +332,11 @@ export default defineConfig({
               outlineOffset: "2px",
             },
             _disabled: { cursor: "not-allowed" },
+            "@media (forced-colors: active)": {
+              color: "ButtonText",
+              background: "ButtonFace",
+              borderColor: "ButtonText",
+            },
           },
           variants: {
             kind: {
@@ -339,6 +345,11 @@ export default defineConfig({
                 bg: "action",
                 color: "onAction",
                 cursor: "pointer",
+                "@media (forced-colors: active)": {
+                  color: "ButtonText",
+                  background: "ButtonFace",
+                  borderColor: "ButtonText",
+                },
               },
               input: { width: "full", maxWidth: "xl" },
             },

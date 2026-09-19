@@ -3,7 +3,7 @@ import * as Effect from "effect/Effect"
 import { AxeBuilder } from "@axe-core/playwright"
 import { chromium } from "playwright"
 import { build, preview } from "vite"
-import { builtApp } from "./browser.ts"
+import { builtApp, connectToTenant } from "./browser.ts"
 
 const fixture = Effect.acquireRelease(
   Effect.promise(async () => {
@@ -125,16 +125,17 @@ it.effect(
     Effect.gen(function* () {
       const { page, url, errors } = yield* builtApp
       yield* Effect.promise(async () => {
-        await page.goto(url)
-        await page.getByLabel("Tenant ID", { exact: true }).fill(
+        await connectToTenant(
+          page,
+          url,
+          "token",
           "018f0f2a-7b1d-7b1d-8b1d-7b1d7b1d7b1d",
+          "User accounts",
         )
-        await page.getByLabel("Session token", { exact: true }).fill("token")
-        await page.getByRole("button", { name: "Connect", exact: true }).click()
 
-        const trigger = page.getByRole("button", { name: "Disconnect", exact: true })
+        const trigger = page.getByRole("button", { name: "Sign out", exact: true })
         await trigger.click()
-        const dialog = page.getByRole("dialog", { name: "Disconnect this session?" })
+        const dialog = page.getByRole("dialog", { name: "Sign out of RITSEI?" })
         await dialog.waitFor()
         assert.isTrue(await dialog.isVisible())
         assert.isNotNull(await dialog.getAttribute("aria-labelledby"))
@@ -147,19 +148,19 @@ it.effect(
         await page.keyboard.press("Escape")
         await dialog.waitFor({ state: "hidden" })
         await page.waitForFunction(
-          () => document.activeElement?.textContent === "Disconnect",
+          () => document.activeElement?.textContent === "Sign out",
         )
         assert.equal(
           await page.evaluate(() => document.activeElement?.textContent),
-          "Disconnect",
+          "Sign out",
         )
 
         await trigger.click()
-        await dialog.getByRole("button", { name: "Disconnect", exact: true }).click()
+        await dialog.getByRole("button", { name: "Sign out", exact: true }).click()
         assert.isFalse(
-          await page.getByRole("button", { name: "Disconnect", exact: true }).isVisible(),
+          await page.getByRole("button", { name: "Sign out", exact: true }).isVisible(),
         )
-        assert.isTrue(await page.getByRole("heading", { name: "User accounts" }).isVisible())
+        assert.isTrue(await page.getByRole("heading", { name: "Sign in to RITSEI" }).isVisible())
         assert.deepEqual(errors, [])
       })
     }),

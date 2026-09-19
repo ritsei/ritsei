@@ -1,13 +1,157 @@
-import { createSignal, Errored, For, Loading, onSettled, Show, untrack, useContext } from "solid-js"
+import { createSignal, onSettled, Show, untrack, useContext } from "solid-js"
 import type { UserAccount } from "../../shared/contracts/generated/identity.ts"
-import { ApiRuntime } from "../../shared/runtime.ts"
 import { failureMessage } from "../../shared/api.ts"
+import { CommandFeedback, QueryBoundary } from "../../shared/request-feedback.tsx"
+import { ApiRuntime } from "../../shared/runtime.ts"
 import { layout } from "../../ui/foundations/layout.ts"
-import { control } from "../../ui/recipes/control.ts"
-import { surface } from "../../ui/recipes/surface.ts"
+import { Badge } from "../../ui/primitives/badge.tsx"
+import { Button } from "../../ui/primitives/button.tsx"
+import { createDialogOpenChange, Dialog } from "../../ui/primitives/dialog.tsx"
+import { Form } from "../../ui/primitives/form.tsx"
+import { FormField } from "../../ui/primitives/form-field.tsx"
+import { Input } from "../../ui/primitives/input.tsx"
+import { DataTable } from "../../ui/patterns/data-table.tsx"
+import { EntityWorkspace } from "../../ui/patterns/entity-workspace.tsx"
 import { CartographyField } from "../../ui/renderers/cartography/cartography-field.tsx"
+import { surface } from "../../ui/recipes/surface.ts"
 import { projectAccountNetwork } from "./projections/account-network.ts"
-import { createAccountEmailMutation, createAccountsQuery } from "./queries.ts"
+import {
+  createAccountEmailMutation,
+  createAccountMutation,
+  createAccountQuery,
+  createAccountsQuery,
+} from "./queries.ts"
+
+function AccountTable(props: {
+  accounts: readonly UserAccount[]
+  selectedAccountId?: string
+}) {
+  return (
+    <DataTable
+      surface={false}
+      caption="Tenant membership accounts · maximum 200 records"
+      rows={props.accounts}
+      getRowClass={(account) =>
+        account.id === props.selectedAccountId ? layout.tableRowSelected : undefined}
+      columns={[
+        {
+          id: "email",
+          header: "Email",
+          cell: (account) => (
+            <a href={`/user-accounts/${encodeURIComponent(account.id)}`}>
+              {account.email}
+            </a>
+          ),
+        },
+        {
+          id: "status",
+          header: "Global status",
+          cell: (account) => (
+            <Badge tone={account.status === "active" ? "success" : "warning"}>
+              {account.status === "active" ? "Active" : "Disabled"}
+            </Badge>
+          ),
+        },
+        {
+          id: "action",
+          header: "Action",
+          cell: (account) => (
+            <a
+              href={`/user-accounts/${encodeURIComponent(account.id)}`}
+              aria-label={`Open account for ${account.email}`}
+            >
+              Open
+            </a>
+          ),
+        },
+      ]}
+    />
+  )
+}
+
+// Fallow: this dialog intentionally combines identity input validation and unknown-outcome recovery.
+// fallow-ignore-next-line complexity
+function CreateAccountDialog(props: { reload: () => Promise<unknown> }) {
+  const scope = useContext(ApiRuntime)
+  const [open, setOpen] = createSignal(false)
+  const [invalid, setInvalid] = createSignal(false)
+  let formElement: HTMLFormElement | undefined
+  let emailInput: HTMLInputElement | undefined
+  const mutation = createAccountMutation(scope, () => {
+    formElement?.reset()
+    setInvalid(false)
+    setOpen(false)
+  })
+  return (
+    <Dialog
+      open={open()}
+      onOpenChange={createDialogOpenChange(mutation, setOpen, setInvalid)}
+      trigger={<span>Create account</span>}
+      triggerVariant="primary"
+      title="Create user account"
+      description="Create a global identity and link it to the connected tenant. The server authorizes the command before writing."
+    >
+      <Form
+        ref={(element) => {
+          formElement = element
+        }}
+        class={layout.stack}
+        onSubmit={(value) => {
+          if (mutation.isPending || mutation.error?.kind === "unknown-outcome") return
+          const email = value.email
+          if (typeof email !== "string" || !/\S/.test(email)) {
+            setInvalid(true)
+            emailInput?.focus()
+            return
+          }
+          setInvalid(false)
+          mutation.mutate({ email })
+        }}
+      >
+        <FormField
+          label="Email"
+          required
+          helperText="The identity service normalizes casing and surrounding whitespace."
+          error={invalid() || mutation.error?.kind === "validation"
+            ? "Enter a nonblank email."
+            : undefined}
+        >
+          {(fieldProps) => (
+            <Input
+              {...fieldProps}
+              ref={(element) => {
+                emailInput = element
+              }}
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="off"
+              required
+              disabled={mutation.isPending}
+            />
+          )}
+        </FormField>
+        <CommandFeedback
+          error={mutation.error?.kind === "validation" ? null : mutation.error}
+          pending={mutation.isPending}
+          success={mutation.isSuccess}
+          successMessage="Account created."
+          area="accounts"
+          reload={props.reload}
+          reset={() => mutation.reset()}
+        />
+        <Button
+          variant="primary"
+          type="submit"
+          loading={mutation.isPending}
+          disabled={mutation.error?.kind === "unknown-outcome"}
+        >
+          Create account
+        </Button>
+      </Form>
+    </Dialog>
+  )
+}
 
 function EmailEditor(
   props: {
@@ -17,219 +161,226 @@ function EmailEditor(
   },
 ) {
   const scope = useContext(ApiRuntime)
-  const initialEmail = untrack(() => props.account.email)
-  let emailInput: HTMLInputElement | undefined
+  const account = untrack(() => props.account)
   const [invalid, setInvalid] = createSignal(false)
   const mutation = createAccountEmailMutation(scope)
+  let emailInput: HTMLInputElement | undefined
   onSettled(() => emailInput?.focus())
   return (
     <section class={surface()} aria-labelledby="edit-heading">
-      <form
+      <Form
         class={layout.stack}
-        onSubmit={(event) => {
-          event.preventDefault()
-          if (
-            mutation.isPending || mutation.error?.kind === "unknown-outcome"
-          ) return
-          const email = new FormData(event.currentTarget).get("email")
+        onSubmit={(value) => {
+          if (mutation.isPending || mutation.error?.kind === "unknown-outcome") return
+          const email = value.email
           if (typeof email !== "string" || !/\S/.test(email)) {
             setInvalid(true)
             emailInput?.focus()
             return
           }
           setInvalid(false)
-          void mutation.mutate({ id: props.account.id, email })
+          mutation.mutate({ id: account.id, email })
         }}
       >
-        <h2 id="edit-heading">Edit account email</h2>
+        <h3 id="edit-heading">Edit account email</h3>
         <p>
           This changes the global account, including its use in other tenants. The server checks
           your permission again when you save.
         </p>
-        <label for="account-email">Email</label>
-        <input
-          ref={(element) => {
-            emailInput = element
-          }}
-          id="account-email"
-          name="email"
-          type="text"
-          inputmode="email"
-          autocomplete="off"
-          class={control({ kind: "input" })}
-          value={initialEmail}
+        <FormField
+          label="Email"
           required
-          disabled={mutation.isPending}
-          aria-invalid={invalid() || mutation.error?.kind === "validation" ? "true" : "false"}
-          aria-describedby="email-error edit-help"
-        />
-        <p id="edit-help">
-          A nonblank value is required. Account changes are never retried automatically.
-        </p>
-        <p id="email-error" role="alert">
-          {invalid()
-            ? "Enter a nonblank email before saving."
-            : mutation.isError
-            ? failureMessage(mutation.error)
-            : ""}
-        </p>
+          helperText="Account changes are never retried automatically."
+          error={invalid() || mutation.error?.kind === "validation"
+            ? "Enter a nonblank email."
+            : undefined}
+        >
+          {(fieldProps) => (
+            <Input
+              {...fieldProps}
+              ref={(element) => {
+                emailInput = element
+              }}
+              name="email"
+              type="email"
+              inputmode="email"
+              autocomplete="off"
+              value={account.email}
+              required
+              disabled={mutation.isPending}
+            />
+          )}
+        </FormField>
+        <Show when={mutation.isError && mutation.error?.kind !== "validation"}>
+          <p role="alert">{failureMessage(mutation.error)}</p>
+        </Show>
         <p role="status">
           {mutation.isPending
             ? "Saving email…"
             : mutation.isSuccess
-            ? "Email saved. The account list has been refreshed."
+            ? "Email saved. The tenant account views are refreshing."
             : ""}
         </p>
         <div class={layout.row}>
-          <button
-            class={control({ kind: "action" })}
+          <Button
+            variant="primary"
             type="submit"
-            disabled={mutation.isPending ||
-              mutation.error?.kind === "unknown-outcome"}
+            loading={mutation.isPending}
+            disabled={mutation.error?.kind === "unknown-outcome"}
           >
             Save email
-          </button>
-          <button
-            class={control()}
-            type="button"
-            disabled={mutation.isPending}
-            onClick={props.close}
-          >
+          </Button>
+          <Button type="button" disabled={mutation.isPending} onClick={props.close}>
             Close editor
-          </button>
+          </Button>
           <Show when={mutation.error?.kind === "unknown-outcome"}>
-            <button
-              class={control()}
+            <Button
               type="button"
               onClick={() => {
                 void props.reload().then(props.close)
               }}
             >
               Reload before retrying
-            </button>
+            </Button>
           </Show>
         </div>
-      </form>
+      </Form>
     </section>
   )
 }
 
-export function Accounts() {
+function AccountDetail(props: { id: string }) {
   const scope = useContext(ApiRuntime)
-  const query = createAccountsQuery(scope)
-  const [editing, setEditing] = createSignal<string | null>(null)
-  const [selectedVisualSegment, setSelectedVisualSegment] = createSignal<string | null>(null)
-  let trigger: HTMLButtonElement | undefined
-  const close = () => {
-    setEditing(null)
-    trigger?.focus()
+  const id = untrack(() => props.id)
+  const query = createAccountQuery(scope, id)
+  const [editing, setEditing] = createSignal(false)
+  let editTrigger: HTMLButtonElement | undefined
+  const closeEditor = () => {
+    setEditing(false)
+    editTrigger?.focus()
   }
   return (
-    <section class={layout.stack} aria-labelledby="accounts-heading">
+    <section class={layout.stack} aria-labelledby="account-detail-heading">
       <div class={layout.row}>
-        <h1 id="accounts-heading">User accounts</h1>
-        <button
-          class={control()}
+        <h2 id="account-detail-heading">Account detail</h2>
+        <Button
           type="button"
           onClick={() => {
-            close()
             void query.refetch()
           }}
         >
-          Reload accounts
-        </button>
+          Reload detail
+        </Button>
       </div>
-      <p>
-        Accounts linked to the connected tenant. Email and status belong to the global identity.
-      </p>
-      <Errored
-        fallback={(error, reset) => (
-          <div class={surface()}>
-            <p role="alert">{failureMessage(error())}</p>
-            <button
-              class={control()}
-              type="button"
-              onClick={() => {
-                void query.refetch().then(() => reset())
-              }}
-            >
-              Try loading again
-            </button>
-          </div>
-        )}
-      >
-        <Loading
-          fallback={<p role="status" aria-busy="true">Loading user accounts…</p>}
-        >
-          <Show
-            when={query.data.length > 0}
-            fallback={<p role="status">No user accounts are linked to this tenant.</p>}
-          >
-            <CartographyField
-              intent={projectAccountNetwork(query.data)}
-              selectedMarkerId={selectedVisualSegment() ?? undefined}
-              onInteraction={(interaction) => {
-                if (interaction.type === "select") setSelectedVisualSegment(interaction.targetId)
-              }}
-            >
-              <Show when={selectedVisualSegment()}>
-                {(segment) => <p role="status">Selected visual segment: {segment()}</p>}
-              </Show>
-            </CartographyField>
-            <div class={layout.scroll}>
-              <table>
-                <caption>
-                  Tenant membership accounts · maximum 200 records in this preview
-                </caption>
-                <thead>
-                  <tr>
-                    <th scope="col">Email</th>
-                    <th scope="col">Account status</th>
-                    <th scope="col">Action</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <For each={query.data}>
-                    {(account) => (
-                      <tr>
-                        <td>{account.email}</td>
-                        <td>
-                          {account.status === "active" ? "Active" : "Disabled"}
-                        </td>
-                        <td>
-                          <button
-                            class={control()}
-                            type="button"
-                            aria-label={`Edit email for ${account.email}`}
-                            onClick={(event) => {
-                              trigger = event.currentTarget
-                              setEditing(account.id)
-                            }}
-                          >
-                            Edit email
-                          </button>
-                        </td>
-                      </tr>
-                    )}
-                  </For>
-                </tbody>
-              </table>
-            </div>
-            <Show
-              when={query.data.find((account) => account.id === editing())}
-              keyed
-            >
-              {(account) => (
+      <QueryBoundary label="account detail" retry={() => query.refetch()}>
+        <Show when={query.data} keyed>
+          {(account) => (
+            <div class={layout.stack}>
+              <dl class={layout.detailList}>
+                <div class={layout.detailItem}>
+                  <dt class={layout.detailTerm}>Email</dt>
+                  <dd class={layout.detailValue}>{account.email}</dd>
+                </div>
+                <div class={layout.detailItem}>
+                  <dt class={layout.detailTerm}>Global status</dt>
+                  <dd class={layout.detailValue}>
+                    <Badge tone={account.status === "active" ? "success" : "warning"}>
+                      {account.status === "active" ? "Active" : "Disabled"}
+                    </Badge>
+                  </dd>
+                </div>
+                <div class={layout.detailItem}>
+                  <dt class={layout.detailTerm}>Account ID</dt>
+                  <dd class={[layout.detailValue, layout.code]}>{account.id}</dd>
+                </div>
+              </dl>
+
+              <div class={layout.row}>
+                <Button
+                  ref={(element) => {
+                    editTrigger = element
+                  }}
+                  type="button"
+                  onClick={() => setEditing(true)}
+                >
+                  Edit email
+                </Button>
+              </div>
+
+              <Show when={editing()}>
                 <EmailEditor
                   account={account}
-                  close={close}
+                  close={closeEditor}
                   reload={() => query.refetch()}
                 />
-              )}
-            </Show>
-          </Show>
-        </Loading>
-      </Errored>
+              </Show>
+              <p class={layout.muted}>
+                Global disable, enable, and permanent removal are trusted identity operations and
+                are intentionally unavailable to tenant administrators. Manage tenant access in
+                Access instead.
+              </p>
+            </div>
+          )}
+        </Show>
+      </QueryBoundary>
     </section>
+  )
+}
+
+export function Accounts(props: { selectedAccountId?: string }) {
+  const scope = useContext(ApiRuntime)
+  const query = createAccountsQuery(scope)
+  const [selectedVisualSegment, setSelectedVisualSegment] = createSignal<string | null>(null)
+  return (
+    <EntityWorkspace
+      title="User accounts"
+      description={
+        <p>
+          Global identities linked to the connected tenant. Account provisioning and email changes
+          remain server-authorized; tenant membership state is managed separately in Access.
+        </p>
+      }
+      headerActions={
+        <div class={layout.row}>
+          <CreateAccountDialog reload={() => query.refetch()} />
+          <Button
+            type="button"
+            onClick={() => {
+              void query.refetch()
+            }}
+          >
+            Reload accounts
+          </Button>
+        </div>
+      }
+      aside={props.selectedAccountId ? <AccountDetail id={props.selectedAccountId} /> : undefined}
+    >
+      <QueryBoundary
+        label="user accounts"
+        retryLabel="Try loading again"
+        retry={() => query.refetch()}
+      >
+        <Show
+          when={query.data.length > 0}
+          fallback={<p role="status">No user accounts are linked to this tenant.</p>}
+        >
+          <CartographyField
+            intent={projectAccountNetwork(query.data)}
+            selectedMarkerId={selectedVisualSegment() ?? undefined}
+            onInteraction={(interaction) => {
+              if (interaction.type === "select") setSelectedVisualSegment(interaction.targetId)
+            }}
+          >
+            <Show when={selectedVisualSegment()}>
+              {(segment) => <p role="status">Selected visual segment: {segment()}</p>}
+            </Show>
+          </CartographyField>
+          <AccountTable
+            accounts={query.data}
+            selectedAccountId={props.selectedAccountId}
+          />
+        </Show>
+      </QueryBoundary>
+    </EntityWorkspace>
   )
 }

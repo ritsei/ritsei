@@ -23,8 +23,8 @@ export function EntityWorkspace(props: EntityWorkspaceProps) {
         {props.headerActions}
       </header>
       {props.toolbar && <div class={surface()}>{props.toolbar}</div>}
-      <div class={layout.row}>
-        <div class={layout.stack} style={{ "flex-grow": "1" }}>{props.children}</div>
+      <div class={layout.workspaceSplit}>
+        <div class={layout.stack}>{props.children}</div>
         {props.aside && (
           <aside class={surface()} aria-label="Related information">{props.aside}</aside>
         )}

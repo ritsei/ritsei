@@ -1,7 +1,7 @@
 import { assert, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
 import { AxeBuilder } from "@axe-core/playwright"
-import { builtApp } from "./browser.ts"
+import { builtApp, connectToTenant } from "./browser.ts"
 
 const tenantId = "018f3f77-0c5a-7cc0-8b62-6a163d214124"
 const accounts = [
@@ -29,10 +29,8 @@ it.effect(
             contentType: "application/json",
             body: JSON.stringify(accounts),
           }))
-        await page.goto(url)
-        await page.getByLabel("Tenant ID", { exact: true }).fill(tenantId)
-        await page.getByLabel("Session token", { exact: true }).fill("token")
-        await page.getByRole("button", { name: "Connect", exact: true }).click()
+        await connectToTenant(page, url, "token", tenantId, "User accounts")
+        await page.getByRole("link", { name: "User accounts", exact: true }).click()
         await page.waitForURL("**/user-accounts")
 
         const field = page.getByRole("group", { name: "Tenant account relationships" })

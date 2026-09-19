@@ -3,6 +3,24 @@ import type { JSX } from "@solidjs/web"
 import { css } from "../generated/css/index.js"
 import { Button } from "./button.tsx"
 
+export const createDialogOpenChange = (
+  mutation: { readonly isPending: boolean; readonly reset: () => void },
+  setOpen: (open: boolean) => void,
+  resetField?: (invalid: boolean) => void,
+  afterReset?: () => void,
+) =>
+// Fallow: this helper intentionally centralizes pending guards and dialog reset branches.
+// fallow-ignore-next-line complexity
+(next: boolean) => {
+  if (mutation.isPending) return
+  if (next) {
+    mutation.reset()
+    resetField?.(false)
+    afterReset?.()
+  }
+  setOpen(next)
+}
+
 export interface DialogProps {
   readonly trigger?: JSX.Element
   readonly triggerVariant?: "primary" | "secondary" | "danger"
@@ -23,6 +41,8 @@ const styles = {
     zIndex: "modal",
     width: "dialog",
     maxWidth: "[32rem]",
+    maxHeight: "[calc(100vh - 2rem)]",
+    overflow: "auto",
     transform: "translate(-50%, -50%)",
     bg: "content",
     color: "text",

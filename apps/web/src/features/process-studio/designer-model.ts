@@ -1,8 +1,15 @@
-import type { ProcessDefinitionType } from "../../../../../modules/process/mod.ts"
-
-// process designer edits a typed mapping model and emits deterministic Process IR.
-export type ProcessNodeKind = ProcessDefinitionType["nodes"][number]["kind"]
-export type ProcessEnvironment = ProcessDefinitionType["environment"]
+// The process designer keeps only typed mapping and deterministic Process IR in the browser.
+// Catalog authority and release validation remain on the backend.
+export type ProcessNodeKind =
+  | "Start"
+  | "DomainCommand"
+  | "HumanTask"
+  | "Decision"
+  | "WaitForEvent"
+  | "Timer"
+  | "ParallelBranch"
+  | "End"
+export type ProcessEnvironment = "DEV" | "TEST" | "PROD"
 export type MappingType = "string" | "number" | "boolean" | "uuid"
 
 export type CatalogReference = {

@@ -9,7 +9,7 @@
  * When Solid supersedes or disposes a computation, its iterator is closed;
  * `return()` interrupts the Effect fiber and waits for its finalizers.
  *
- * Action path — `effectAction` runs each `yield*`-ed Effect as one
+ * Action path — `effectAction` runs each yielded Effect as one
  * interruptible Solid action step. Typed failures and interruption are thrown
  * back into the generator so workflow code can perform explicit compensation.
  * This bridge does not replace TanStack Query's server-state ownership or
@@ -157,8 +157,10 @@ export interface EffectAction<Args extends unknown[], A> {
  * Runs each yielded Effect as an interruptible Solid action step.
  *
  * The Solid action owns optimistic presentation writes; Effect owns service
- * calls, typed failures, interruption, and resource finalizers. Compensation
- * across already-completed steps belongs in the generator's catch block.
+ * calls, typed failures, interruption, and resource finalizers. Action generators
+ * yield Effects directly so injected failures reach the generator's catch block;
+ * `yield*` is reserved for Effect's own generator protocol. Compensation across
+ * already-completed steps belongs in the generator's catch block.
  * Use for explicit workflows; TanStack Query remains the owner of shared
  * server-state caching and invalidation.
  */
