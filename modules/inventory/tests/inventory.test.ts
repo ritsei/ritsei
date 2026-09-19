@@ -28,6 +28,7 @@ import {
   StockBalance,
   StockCorrection,
   StockCorrectionIdempotencyConflict,
+  StockMovement,
   StockReservation,
   StockReservationIdempotencyConflict,
   StockReservationInvalidState,
@@ -49,8 +50,11 @@ const correctionMetadata = {
   causationId: null,
 } as const
 const capabilities = [
+  InventoryCapabilities.warehouseRead,
   InventoryCapabilities.warehouseCreate,
+  InventoryCapabilities.itemRead,
   InventoryCapabilities.itemCreate,
+  InventoryCapabilities.stockRead,
   InventoryCapabilities.stockReceive,
   InventoryCapabilities.stockAdjust,
   InventoryCapabilities.stockReserve,
@@ -428,6 +432,62 @@ describe("inventory contract", () => {
       assert.strictEqual(reservation.quantity, "4")
       assert.strictEqual(reservation.idempotencyKey, "reservation-1")
       assert.strictEqual(reservation.id, repeated.id)
+    })))
+
+  it.effect("lists tenant-scoped inventory projections and append-only movement history", () =>
+    withInventory(Effect.gen(function* () {
+      const inventory = yield* InventoryService
+      const warehouse = yield* inventory.createWarehouse({
+        principal,
+        tenantId,
+        legalEntityId,
+        name: "Read Warehouse",
+      })
+      const item = yield* inventory.createItem({
+        principal,
+        tenantId,
+        sku: "read-item",
+        name: "Read Item",
+      })
+      yield* inventory.receiveStock({
+        principal,
+        tenantId,
+        warehouseId: warehouse.id,
+        itemId: item.id,
+        quantity: "10",
+      })
+      const reservation = yield* inventory.reserveStock({
+        principal,
+        tenantId,
+        warehouseId: warehouse.id,
+        itemId: item.id,
+        quantity: "3",
+        idempotencyKey: "read-reservation",
+      })
+      const warehouses = yield* inventory.listWarehouses({ principal, tenantId, limit: 10 })
+      const items = yield* inventory.listItems({ principal, tenantId, search: "READ", limit: 10 })
+      const balances = yield* inventory.listStockBalances({ principal, tenantId, limit: 10 })
+      const reservations = yield* inventory.listStockReservations({
+        principal,
+        tenantId,
+        status: "active",
+      })
+      const movements = yield* inventory.listStockMovements({ principal, tenantId, limit: 10 })
+
+      assert.deepStrictEqual(warehouses, [warehouse])
+      assert.deepStrictEqual(items, [item])
+      assert.deepStrictEqual(balances, [{
+        tenantId,
+        warehouseId: warehouse.id,
+        itemId: item.id,
+        onHand: "10",
+        reserved: "3",
+        unitOfMeasure: "EA",
+      }])
+      assert.deepStrictEqual(reservations, [reservation])
+      assert.strictEqual(movements.length, 2)
+      for (const movement of movements) yield* Schema.decodeUnknownEffect(StockMovement)(movement)
+      assert.deepStrictEqual(movements.map((movement) => movement.kind), ["receipt", "reservation"])
     })))
 
   it.effect("validates receive warehouse legal entity when supplied", () =>

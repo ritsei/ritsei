@@ -1,4 +1,4 @@
-import { and, eq, gte, inArray, sql } from "drizzle-orm"
+import { and, asc, eq, gte, ilike, inArray, or, sql } from "drizzle-orm"
 import * as Clock from "effect/Clock"
 import * as Effect from "effect/Effect"
 import * as Schema from "effect/Schema"
@@ -26,6 +26,12 @@ import {
   CreateWarehouseInput,
   FulfillReservationInput,
   InventoryService,
+  ListItemsInput,
+  ListStockBalancesInput,
+  ListStockMovementsInput,
+  ListStockReservationsInput,
+  ListStockTransfersInput,
+  ListWarehousesInput,
   ReceiveStockInput,
   ReleaseReservationInput,
   ReserveStockInput,
@@ -59,6 +65,44 @@ import {
 
 const referenceFailure = (tenantId: string, warehouseId: string, itemId: string) =>
   new InventoryReferenceNotFound({ tenantId, warehouseId, itemId })
+
+const warehouseSelection = {
+  id: warehouses.id,
+  tenantId: warehouses.tenantId,
+  legalEntityId: warehouses.legalEntityId,
+  primaryBranchId: warehouses.primaryBranchId,
+  name: warehouses.name,
+}
+
+const itemSelection = {
+  id: items.id,
+  tenantId: items.tenantId,
+  sku: items.sku,
+  name: items.name,
+  unitOfMeasure: items.unitOfMeasure,
+}
+
+const balanceSelection = {
+  tenantId: stockBalances.tenantId,
+  warehouseId: stockBalances.warehouseId,
+  itemId: stockBalances.itemId,
+  onHand: stockBalances.onHand,
+  reserved: stockBalances.reserved,
+  unitOfMeasure: items.unitOfMeasure,
+}
+
+const movementSelection = {
+  id: movements.id,
+  tenantId: movements.tenantId,
+  warehouseId: movements.warehouseId,
+  itemId: movements.itemId,
+  quantity: movements.quantity,
+  kind: movements.kind,
+  referenceId: movements.referenceId,
+  unitOfMeasure: movements.unitOfMeasure,
+  reason: movements.reason,
+  idempotencyKey: movements.idempotencyKey,
+}
 
 const correctionSelection = {
   id: movements.id,
@@ -154,6 +198,9 @@ const mapTransferCreateError = (
     })
     : error
 
+const escapeLikePattern = (value: string) =>
+  value.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_")
+
 export const makeInventoryPostgresService = Effect.gen(function* () {
   const database = yield* Database
   const authorization = yield* AuthorizationService
@@ -161,6 +208,184 @@ export const makeInventoryPostgresService = Effect.gen(function* () {
   const clock = yield* Clock.Clock
   const now = () => new Date(clock.currentTimeMillisUnsafe())
   const store = {
+    listWarehouses: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListWarehousesInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.warehouseRead,
+        })
+        return yield* database.query(
+          (db) =>
+            db.select(warehouseSelection)
+              .from(warehouses)
+              .where(and(
+                eq(warehouses.tenantId, decoded.tenantId),
+                decoded.legalEntityId === undefined
+                  ? undefined
+                  : eq(warehouses.legalEntityId, decoded.legalEntityId),
+              ))
+              .orderBy(asc(warehouses.id))
+              .limit(decoded.limit ?? 200),
+          "inventory.warehouse.list",
+        )
+      }),
+    listItems: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListItemsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.itemRead,
+        })
+        const search = decoded.search === undefined ? undefined : escapeLikePattern(decoded.search)
+        return yield* database.query(
+          (db) =>
+            db.select(itemSelection)
+              .from(items)
+              .where(and(
+                eq(items.tenantId, decoded.tenantId),
+                search === undefined ? undefined : or(
+                  ilike(items.sku, `%${search}%`),
+                  ilike(items.name, `%${search}%`),
+                ),
+              ))
+              .orderBy(asc(items.id))
+              .limit(decoded.limit ?? 200),
+          "inventory.item.list",
+        )
+      }),
+    listStockBalances: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListStockBalancesInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.stockRead,
+        })
+        return yield* database.query(
+          (db) =>
+            db.select(balanceSelection)
+              .from(stockBalances)
+              .innerJoin(
+                items,
+                and(
+                  eq(items.tenantId, stockBalances.tenantId),
+                  eq(items.id, stockBalances.itemId),
+                ),
+              )
+              .where(and(
+                eq(stockBalances.tenantId, decoded.tenantId),
+                decoded.warehouseId === undefined
+                  ? undefined
+                  : eq(stockBalances.warehouseId, decoded.warehouseId),
+                decoded.itemId === undefined ? undefined : eq(stockBalances.itemId, decoded.itemId),
+              ))
+              .orderBy(asc(stockBalances.warehouseId), asc(stockBalances.itemId))
+              .limit(decoded.limit ?? 200),
+          "inventory.stock.balance.list",
+        )
+      }),
+    listStockReservations: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListStockReservationsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.stockRead,
+        })
+        return yield* database.query(
+          (db) =>
+            db.select(reservationSelection)
+              .from(reservations)
+              .where(and(
+                eq(reservations.tenantId, decoded.tenantId),
+                decoded.warehouseId === undefined
+                  ? undefined
+                  : eq(reservations.warehouseId, decoded.warehouseId),
+                decoded.itemId === undefined ? undefined : eq(reservations.itemId, decoded.itemId),
+                decoded.status === undefined ? undefined : eq(reservations.status, decoded.status),
+              ))
+              .orderBy(asc(reservations.id))
+              .limit(decoded.limit ?? 200),
+          "inventory.stock.reservation.list",
+        )
+      }),
+    listStockTransfers: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListStockTransfersInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.stockRead,
+        })
+        return yield* database.transaction(
+          async (tx) => {
+            const transfers = await tx.select(transferSelection)
+              .from(stockTransfers)
+              .where(and(
+                eq(stockTransfers.tenantId, decoded.tenantId),
+                decoded.warehouseId === undefined ? undefined : or(
+                  eq(stockTransfers.sourceWarehouseId, decoded.warehouseId),
+                  eq(stockTransfers.destinationWarehouseId, decoded.warehouseId),
+                ),
+                decoded.status === undefined
+                  ? undefined
+                  : eq(stockTransfers.status, decoded.status),
+              ))
+              .orderBy(asc(stockTransfers.id))
+              .limit(decoded.limit ?? 200)
+            if (transfers.length === 0) return []
+            const lines = await tx.select({
+              transferId: stockTransferLines.transferId,
+              itemId: stockTransferLines.itemId,
+              quantity: stockTransferLines.quantity,
+            })
+              .from(stockTransferLines)
+              .where(and(
+                eq(stockTransferLines.tenantId, decoded.tenantId),
+                inArray(stockTransferLines.transferId, transfers.map((transfer) => transfer.id)),
+              ))
+              .orderBy(asc(stockTransferLines.transferId), asc(stockTransferLines.itemId))
+            const linesByTransfer = new Map<string, StockTransferLine[]>()
+            for (const line of lines) {
+              const transferLines = linesByTransfer.get(line.transferId) ?? []
+              transferLines.push({ itemId: line.itemId, quantity: line.quantity })
+              linesByTransfer.set(line.transferId, transferLines)
+            }
+            return transfers.map((transfer) =>
+              toStockTransfer(transfer, linesByTransfer.get(transfer.id) ?? [])
+            )
+          },
+          "inventory.stock.transfer.list",
+        )
+      }),
+    listStockMovements: (input) =>
+      Effect.gen(function* () {
+        const decoded = yield* Schema.decodeUnknownEffect(ListStockMovementsInput)(input)
+        yield* authorization.authorize({
+          principal: decoded.principal,
+          tenantId: decoded.tenantId,
+          capability: InventoryCapabilities.stockRead,
+        })
+        return yield* database.query(
+          (db) =>
+            db.select(movementSelection)
+              .from(movements)
+              .where(and(
+                eq(movements.tenantId, decoded.tenantId),
+                decoded.warehouseId === undefined
+                  ? undefined
+                  : eq(movements.warehouseId, decoded.warehouseId),
+                decoded.itemId === undefined ? undefined : eq(movements.itemId, decoded.itemId),
+                decoded.kind === undefined ? undefined : eq(movements.kind, decoded.kind),
+              ))
+              .orderBy(asc(movements.createdAt), asc(movements.id))
+              .limit(decoded.limit ?? 200),
+          "inventory.stock.movement.list",
+        )
+      }),
     createWarehouse: (input) =>
       Effect.gen(function* () {
         const decoded = yield* Schema.decodeUnknownEffect(CreateWarehouseInput)(input)
@@ -1261,6 +1486,22 @@ export const makeInventoryPostgresService = Effect.gen(function* () {
       }),
   } satisfies InventoryService
   return {
+    listWarehouses: Effect.fn("InventoryStore.listWarehouses")((input: unknown) =>
+      store.listWarehouses(input)
+    ),
+    listItems: Effect.fn("InventoryStore.listItems")((input: unknown) => store.listItems(input)),
+    listStockBalances: Effect.fn("InventoryStore.listStockBalances")((input: unknown) =>
+      store.listStockBalances(input)
+    ),
+    listStockReservations: Effect.fn("InventoryStore.listStockReservations")((input: unknown) =>
+      store.listStockReservations(input)
+    ),
+    listStockTransfers: Effect.fn("InventoryStore.listStockTransfers")((input: unknown) =>
+      store.listStockTransfers(input)
+    ),
+    listStockMovements: Effect.fn("InventoryStore.listStockMovements")((input: unknown) =>
+      store.listStockMovements(input)
+    ),
     createWarehouse: Effect.fn("InventoryStore.createWarehouse")((input: unknown) =>
       store.createWarehouse(input)
     ),

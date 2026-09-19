@@ -9,6 +9,24 @@ export const makeInventoryServiceFromStore = <R>(
   Effect.gen(function* () {
     const implementation = yield* store
     return {
+      listWarehouses: Effect.fn("InventoryService.listWarehouses")((input: unknown) =>
+        implementation.listWarehouses(input)
+      ),
+      listItems: Effect.fn("InventoryService.listItems")((input: unknown) =>
+        implementation.listItems(input)
+      ),
+      listStockBalances: Effect.fn("InventoryService.listStockBalances")((input: unknown) =>
+        implementation.listStockBalances(input)
+      ),
+      listStockReservations: Effect.fn("InventoryService.listStockReservations")((input: unknown) =>
+        implementation.listStockReservations(input)
+      ),
+      listStockTransfers: Effect.fn("InventoryService.listStockTransfers")((input: unknown) =>
+        implementation.listStockTransfers(input)
+      ),
+      listStockMovements: Effect.fn("InventoryService.listStockMovements")((input: unknown) =>
+        implementation.listStockMovements(input)
+      ),
       createWarehouse: Effect.fn("InventoryService.createWarehouse")((input: unknown) =>
         implementation.createWarehouse(input)
       ),

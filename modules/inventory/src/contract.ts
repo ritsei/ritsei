@@ -106,6 +106,7 @@ export const StockCorrection = Schema.Struct({
   idempotencyKey: TrimmedNonEmptyString,
 })
 export const StockReservationStatus = Schema.Literals(["active", "released", "fulfilled"])
+export const StockMovementKind = Schema.Literals(["receipt", "issue", "reservation", "release"])
 export const StockReservation = Schema.Struct({
   id: Uuid,
   tenantId: Uuid,
@@ -119,6 +120,18 @@ export const StockTransferStatus = Schema.Literals(["draft", "confirmed", "compl
 export const StockTransferLine = Schema.Struct({
   itemId: Uuid,
   quantity: Quantity,
+})
+export const StockMovement = Schema.Struct({
+  id: Uuid,
+  tenantId: Uuid,
+  warehouseId: Uuid,
+  itemId: Uuid,
+  quantity: SignedQuantity,
+  kind: StockMovementKind,
+  referenceId: Schema.NullOr(Uuid),
+  unitOfMeasure: Schema.NullOr(UnitOfMeasure),
+  reason: Schema.NullOr(TrimmedNonEmptyString),
+  idempotencyKey: Schema.NullOr(TrimmedNonEmptyString),
 })
 export const StockTransfer = Schema.Struct({
   id: Uuid,
@@ -153,11 +166,56 @@ export type Item = Schema.Schema.Type<typeof Item>
 export type StockBalance = Schema.Schema.Type<typeof StockBalance>
 export type StockCorrection = Schema.Schema.Type<typeof StockCorrection>
 export type StockReservation = Schema.Schema.Type<typeof StockReservation>
+export type StockMovementKind = Schema.Schema.Type<typeof StockMovementKind>
+export type StockMovement = Schema.Schema.Type<typeof StockMovement>
 export type StockTransferStatus = Schema.Schema.Type<typeof StockTransferStatus>
 export type StockTransferLine = Schema.Schema.Type<typeof StockTransferLine>
 export type StockTransfer = Schema.Schema.Type<typeof StockTransfer>
 
+const ListLimit = Schema.Int.check(Schema.isBetween({ minimum: 1, maximum: 200 }))
 const ScopedInput = { principal: Principal, tenantId: Uuid }
+export const ListWarehousesInput = Schema.Struct({
+  ...ScopedInput,
+  legalEntityId: Schema.optionalKey(Uuid),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const ListItemsInput = Schema.Struct({
+  ...ScopedInput,
+  search: Schema.optionalKey(Schema.String.check(
+    Schema.makeFilter(
+      (value) => value === value.trim() && value.length > 0 && value.length <= 256,
+      { expected: "a trimmed item search up to 256 characters" },
+    ),
+  )),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const ListStockBalancesInput = Schema.Struct({
+  ...ScopedInput,
+  warehouseId: Schema.optionalKey(Uuid),
+  itemId: Schema.optionalKey(Uuid),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const ListStockReservationsInput = Schema.Struct({
+  ...ScopedInput,
+  warehouseId: Schema.optionalKey(Uuid),
+  itemId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(StockReservationStatus),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const ListStockTransfersInput = Schema.Struct({
+  ...ScopedInput,
+  warehouseId: Schema.optionalKey(Uuid),
+  status: Schema.optionalKey(StockTransferStatus),
+  limit: Schema.optionalKey(ListLimit),
+})
+export const ListStockMovementsInput = Schema.Struct({
+  ...ScopedInput,
+  warehouseId: Schema.optionalKey(Uuid),
+  itemId: Schema.optionalKey(Uuid),
+  kind: Schema.optionalKey(StockMovementKind),
+  limit: Schema.optionalKey(ListLimit),
+})
+
 export const CreateWarehouseInput = Schema.Struct({
   ...ScopedInput,
   legalEntityId: Uuid,
@@ -225,6 +283,24 @@ export const CompleteStockTransferInput = ConfirmStockTransferInput
 type CommonFailure = AuthorizationDenied | DatabaseFailure | Schema.SchemaError
 
 export interface InventoryService {
+  readonly listWarehouses: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<Warehouse>, CommonFailure>
+  readonly listItems: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<Item>, CommonFailure>
+  readonly listStockBalances: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<StockBalance>, CommonFailure>
+  readonly listStockReservations: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<StockReservation>, CommonFailure>
+  readonly listStockTransfers: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<StockTransfer>, CommonFailure>
+  readonly listStockMovements: (
+    input: unknown,
+  ) => Effect.Effect<ReadonlyArray<StockMovement>, CommonFailure>
   readonly createWarehouse: (
     input: unknown,
   ) => Effect.Effect<

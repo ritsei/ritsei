@@ -1,6 +1,9 @@
 export const InventoryCapabilities = {
+  warehouseRead: "inventory.warehouse.read",
   warehouseCreate: "inventory.warehouse.create",
+  itemRead: "inventory.item.read",
   itemCreate: "inventory.item.create",
+  stockRead: "inventory.stock.read",
   stockReceive: "inventory.stock.receive",
   stockAdjust: "inventory.stock.adjust",
   stockReserve: "inventory.stock.reserve",
