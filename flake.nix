@@ -21,6 +21,7 @@
               zig
               protobuf
               postgresql_19
+              tigerbeetle
             ];
 
             shellHook = ''
