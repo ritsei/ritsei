@@ -8,6 +8,8 @@
 > - Authorization: [`./authorization.md`](./authorization.md)
 > - Process Studio: [`./process-studio.md`](./process-studio.md)
 > - External integration surface: [`./integration-architecture.md`](./integration-architecture.md)
+> - Frontend architecture: [`./frontend.md`](./frontend.md)
+> - Design system: [`./design-system.md`](./design-system.md)
 > - Primitive and domain roadmap: [`../roadmap/README.md`](../roadmap/README.md)
 > - Plugin ADR:
 >   [`../decisions/0007-adopt-tiered-plugin-trust.md`](../decisions/0007-adopt-tiered-plugin-trust.md)
@@ -87,8 +89,13 @@ SANDBOXED
 DECLARATIVE
 ```
 
-Trust level controls database access, network access, native FFI, migration rights, permission
-registration, and workflow capabilities. A tenant administrator cannot elevate trust.
+Trust level controls database access, network access, native FFI, migration rights, and eligibility
+to declare capabilities or register contributions. It does not grant a RITSEI business capability;
+a tenant administrator cannot elevate trust.
+
+Trust levels classify extension trust, while catalog provenance (`Domain | Plugin | External` and
+`DomainAction`/`PluginAction`/`ExternalAction` or event counterparts) classifies contract origin.
+These are separate dimensions: neither label implies the other or authorizes execution.
 
 ## Ownership
 
@@ -97,25 +104,47 @@ contract. Direct mutation of core accounting or inventory tables is forbidden.
 
 A plugin manifest declares its identity, versions, trust level, execution/deployment topology,
 dependencies, entry point, owned schemas, requested capabilities, and declared contributions. The
-effective authority is the intersection of declared capabilities, trust policy, installation policy,
-and tenant policy; declaration is not a grant.
+plugin's eligible capability surface is bounded by the intersection of declared capabilities, trust
+policy, installation policy, and tenant policy. A declaration is a request, not a grant, and this
+intersection is not a runtime authorization decision: each operation MUST pass the existing RITSEI
+AuthZ Kernel and the owning domain's current authorization and business-policy checks. Process
+invocations MUST also satisfy
+the applicable catalog release, version, scope, and execution-context requirements.
 
 Trust level and deployment topology are separate dimensions. Local execution is not automatically
 trusted, and remote execution is not automatically untrusted.
 
 Core modules and trusted server plugins may contribute versioned Typed Action
 Catalog and Typed Event Catalog entries through approved contributor contracts.
-Trusted plugins may also contribute connector adapters, but connector protocols,
-credentials, provider retries, and external failures remain behind the
+A connector is an integration-adapter role, not a plugin trust level or separate
+extension-authority model. Trusted plugins may supply connector adapters, but
+protocols, credentials, retries, and external failures remain behind the
 integration boundary and cannot become domain invariants.
+
 A plugin contribution is Process Studio-ready only after it satisfies the
 primitive and Level 3 domain-provider gates in
-[`../roadmap/domain-maturity.md`](../roadmap/domain-maturity.md).
-A plugin-local workflow is implementation or domain-local coordination owned by
-the plugin; it is not a Process Studio definition. Process Studio owns
-cross-domain process definitions, Process IR, release/deployment, and runtime
-orchestration, and may invoke plugin behavior only through released catalog
-contracts.
+[`../roadmap/domain-maturity.md`](../roadmap/domain-maturity.md), and its catalog
+entries meet Process Studio's release and compatibility requirements. Plugin
+trust or installation MUST NOT bypass those gates. A manifest's `workflow`
+declaration refers to plugin-local implementation or domain-local coordination;
+it is not a Process Studio definition or Process IR contribution. Process Studio
+owns cross-domain definitions, Process IR, release/deployment, and runtime
+orchestration, and may invoke plugin behavior only through released compatible
+catalog contracts.
+
+Plugin UI contributions MUST target an explicitly host-published semantic
+extension point and use its versioned contract. Examples such as an object-related
+section, contextual inspector, integration summary, or settings section are
+illustrative categories, not published extension-point identifiers. UI and route
+contributions MUST render within the host-owned shell and use public design-system
+contracts. They MUST NOT replace the shell or workspace frame, redefine global
+navigation, inject arbitrary DOM or scripts, add global CSS, override design
+system tokens, or depend on private UI internals. Declarative layout metadata may
+configure only host-published extension points; without one, the corresponding
+UI contribution is unsupported. Shell presentation is owned by
+[`design-system.md`](./design-system.md), and route composition by
+[`frontend.md`](./frontend.md).
+
 Declarative tenant extensions may compose and configure approved entries but
 cannot register arbitrary executable code, forge catalog metadata, or elevate
 their trust. Detailed process contribution rules are owned by
@@ -136,6 +165,12 @@ A plugin manifest must define:
 - declared capabilities;
 - execution/deployment topology;
 - declared action, event, workflow, route, connector, and UI contributions.
+
+Each host-facing contribution MUST reference its owner-published contract and compatible version:
+action/event entries use their catalog identities and versions, connector adapters use integration-
+owned versioning, and UI entries identify the host-published extension point and contract version.
+The plugin API version covers manifest/host API compatibility; it MUST NOT replace owner-specific
+compatibility or create a redundant generic contribution-version axis.
 
 Installation does not make a contribution Process Studio-ready. It must pass the relevant public
 contract, schema, capability, compatibility, idempotency, recovery, observability, and maturity
