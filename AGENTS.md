@@ -250,6 +250,7 @@ document and summarize only what is necessary for navigation or context.
   and [ADR-0072](./docs/decisions/0072-prefer-native-solid-reactivity-for-effect-integration.md).
 - Do not mirror query results into unrelated signals or global stores.
 - Use TanStack Solid Table, Virtual, and Form for their specific concerns.
+- Before adding a frontend screen, use the [Product Pattern/workspace matrix](./docs/architecture/design-system.md#6-product-patterns), [shell contract](./docs/architecture/design-system.md#navigation-and-workspace-shell), and [route/state composition rules](./docs/architecture/frontend.md#situation-oriented-operational-ui); reuse the canonical shell and patterns rather than inventing page-specific navigation.
 - Keep route loaders thin: parse input, invoke feature logic, and render.
 - Validate API and route boundaries with Effect Schema.
 - Do not import backend implementation modules, Drizzle tables, or repositories.

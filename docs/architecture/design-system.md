@@ -12,9 +12,9 @@
 > target contract and its remaining activation gates; it does not claim that optional GPU capabilities
 > already exist.
 >
-> **Owns:** Product Patterns, Interaction Grammar, Visual Grammar, semantic design tokens, material
-> rules, component contracts, accessibility, density, renderer boundaries, and frontend design-system
-> governance.
+> **Owns:** Navigation and shell visual contracts, Product Pattern composition, Flexible Workspace
+> presentation, Interaction Grammar, Visual Grammar, semantic design tokens, material rules, component
+> contracts, accessibility, density, renderer boundaries, and design-system governance.
 >
 > **Related documents**
 >
@@ -98,6 +98,12 @@ The governing principles are:
 
 The UI MUST remain deterministic, readable, accessible, power-conscious, and fast. A visual effect
 that reduces those properties is a defect, not brand expression.
+
+RITSEI is neither an Odoo-style application launcher with CRUD applications behind it nor a visual
+reproduction of SAP Fiori. It learns from stable information architecture, contextual continuity,
+and floorplan discipline, and from operational workspace efficiency. It expresses those ideas through
+cartographic identity, stable spatial navigation, adaptive workspaces, explicit object context, and a
+command-oriented direct path.
 
 ## 3. Visual character and non-goals
 
@@ -223,26 +229,96 @@ MasterDetail
 CommandSurface
 ```
 
-`OperationalWorkspace` is the default composition for RITSEI's situation-oriented screens. The
-frontend operating model is owned by [`frontend.md`](./frontend.md#situation-oriented-operational-ui);
-this document owns the reusable pattern contract. An `OperationalWorkspace` SHOULD compose:
+The dominant user job selects the primary Product Pattern; route shape or component availability does
+not. Patterns MAY compose when they serve distinct jobs, but each semantic responsibility MUST have
+one clear visual owner.
 
-- local navigation for the active domain area;
-- a contextual page or object header with identity, lifecycle, and impact;
-- evidence, dependencies, process progress, constraints, and history;
-- `ExceptionInvestigation` when a blocked, critical, or attention state needs explanation; and
-- `CommandSurface` for typed, backend-authorized business actions.
+| User job | Primary pattern | Contract and boundary |
+|---|---|---|
+| Browse, scan, or compare records while inspecting a selection | `MasterDetail` | MUST keep the collection and selected detail in view when that context helps comparison. MUST NOT be the universal detail layout or default for deep editing. |
+| Inspect one business object, create it, or edit it deeply | `EntityWorkspace` | MUST give the object clear identity, lifecycle, relevant evidence, and a focused working area. Creation and deep editing SHOULD use available space rather than retain a list by habit. |
+| Understand and advance an operational situation | `OperationalWorkspace` | MUST make current state, impact, evidence, dependencies, process progress, and relevant history legible; present eligible typed commands through `CommandSurface`. MUST NOT turn every route into a dashboard. |
+| Investigate a blocked, anomalous, or attention-worthy state | `ExceptionInvestigation` | MUST explain what happened, why, affected scope, evidence, and safe next actions. MUST NOT be reduced to a red badge or substitute for domain policy. |
+| Apply an action to a high-volume set of records | `BulkOperation` | MUST show the explicit selected set, validation or preview, confirmation where required, and per-result outcome. Mutations MUST use the owning authorized command. |
+| Present available business actions for the current context | `CommandSurface` | MUST show named, context-bound commands and their outcomes. MUST NOT act as navigation, authorization, or a second copy of the same prominent action elsewhere. |
 
-The global sidebar and topbar remain application-shell responsibilities. They provide stable
-landmarks and operating context, not record-level menus or business-object mutation controls.
+`Settings` and `Approval` remain named patterns for their corresponding product jobs; they MUST NOT
+alter the shell or workspace rules below. `OperationalWorkspace` is RITSEI's default for
+situation-oriented screens, not a universal page template. Its application-state and routing integration is owned by
+[`frontend.md`](./frontend.md#situation-oriented-operational-ui); this document owns the reusable
+composition contract.
+
+The core RITSEI cognitive sequence is:
+
+```text
+ORIENT → LOCATE → RECOGNIZE → INVESTIGATE → ACT → OBSERVE
+```
+
+A major workspace SHOULD help the user answer, in order: where they are in the business; which
+capability they are using; what objects, states, or exceptions need attention; what is happening and
+why; which authorized command they can perform; and what changed afterward. RITSEI MUST NOT reduce its
+dominant interaction model to `navigate → form → save`.
+
+### Flexible Workspace
+
+Flexible Workspace is a reusable presentation capability, not a universal visual template or a
+business-state model. Product Patterns define the user's job; the workspace mode determines how much
+surrounding context remains visible.
+
+| Mode | Use when |
+|---|---|
+| `Single` | Focused creation, deep editing, or work that does not benefit from an adjacent object or inspector. |
+| `MasterDetail` | Scanning or comparing a collection while inspecting the selected object. |
+| `DetailInspector` | A primary workspace benefits from a contextual secondary view, without a persistent collection. |
+| `MasterDetailInspector` | Collection, selected detail, and a distinct contextual inspector are all useful at once and the viewport supports them. |
+
+Collection and selection SHOULD remain visible for scanning, comparison, and investigation when they
+reduce reconstruction effort. The object or canvas SHOULD receive more space for focused editing.
+Panes MUST NOT remain merely because they appeared in the previous view; close or collapse context
+when it becomes a burden.
+Selection, column layout, route state, and focus are presentation concerns unless a user-facing
+shareable or deep-link contract makes them navigable state. Frontend ownership is defined in
+[`frontend.md`](./frontend.md).
+
+On wide screens, a workspace MAY show multiple columns. At narrower widths it SHOULD remove columns
+that no longer serve the current task; an inspector MAY become a drawer or focused view. Responsive
+changes MUST preserve object identity, selection meaning, commands, validation, keyboard access, and
+focus behavior.
+
+### Cognitive rationale and agent entry
+
+Stable global landmarks support spatial memory. Expanded navigation supports discovery and
+recognition; its collapsed state gives experienced users more working space. `MasterDetail` lowers
+the cost of comparing items by preserving useful context. Operational evidence, dependencies, state,
+and history externalize memory so the user does not have to reconstruct them across screens. A
+visible boundary SHOULD correspond to a real conceptual boundary. A composition SHOULD let users
+identify their operating context, current object or situation, its state, what needs attention and
+why, what authorized action is available, and what happened after acting—without reconstructing that
+context from memory.
+
+Before implementing a screen, an agent MUST identify:
+
+- the owning global domain and active local capability;
+- the user's primary job and matching Product Pattern;
+- object or situation identity, lifecycle/operational state, and attention;
+- the primary authorized command and where its result is observed;
+- which surrounding context is useful and the selected Flexible Workspace mode;
+- which visual boundaries represent distinct concepts and whether cartographic treatment conveys
+  declared business meaning; and
+- how navigation, columns, keyboard focus, and accessibility adapt responsively.
+
+Agents MUST reuse these patterns before proposing another. If none fits, they MUST name the unmet
+semantic problem before extending the system. The canonical shell responsibilities and visual rules
+are in [Navigation](#navigation-and-workspace-shell). Agents MUST NOT independently introduce a new
+global navigation model, duplicate top navigation, per-page shell variants, permanent icon-only
+global navigation, arbitrary breadcrumbs, card grids or nested cards as the default, cartographic
+decoration without business meaning, canvas-only business data, or a new workspace pattern where an
+existing Product Pattern fits.
 
 A Product Pattern MUST answer:
 
-- where identity appears;
-- where lifecycle state appears;
-- where the primary action lives;
-- which actions are destructive;
-- whether a drawer, dialog, or page is appropriate;
+- where identity and lifecycle state appear;
+- where the primary action lives and how destructive actions are handled;
 - how the user moves from summary to evidence;
 - how filters, bulk actions, history, loading, errors, and degraded states appear; and
 - how density and responsive behavior change without changing meaning.
@@ -1052,68 +1128,117 @@ Forms MUST expose labels, validation, error association, keyboard order, and rec
 - Gold MUST NOT be a normal CTA.
 - Labels MUST name the action and remain consistent with the resulting confirmation.
 
-### Navigation
+### Navigation and workspace shell
 
-RITSEI uses a hybrid navigation shell. This is a semantic split, not a 50/50 compromise:
-
-```text
-Sidebar       → global structure and stable landmarks
-Topbar        → global operating context and utilities
-Local nav     → active domain area
-Context header→ current object or operational situation
-Commands      → current domain actions
-```
-
-The sidebar is a valid cartographic anchor:
+The shell has distinct semantic responsibilities. Its canonical desktop form provides a global
+navigation rail, an optional domain-local navigator, and a dominant adaptive workspace under a thin
+global topbar:
 
 ```text
-Topo Ink + very subtle contour field
-active item → terrain-blue region
+┌──────────────────────────────────────────────────────────────────────────┐
+│ RITSEI | Operating context | Search / run command | Global utilities    │
+├──────────────┬──────────────────────┬───────────────────────────────────┤
+│ Global       │ Local domain          │ Workspace                         │
+│ navigation   │ navigation (optional) │ context header + work + inspector │
+└──────────────┴──────────────────────┴───────────────────────────────────┘
 ```
 
-The sidebar MUST remain broad and stable. It MAY contain `My Work`, `Attention`, broad Operations
-areas, `Processes`, and `Analytics`, but MUST NOT become a database table of contents with every
-record type, filter, or action. Detail navigation belongs in the active workspace as local tabs or
-sections.
+| Layer | Answers | Owns | MUST NOT own |
+|---|---|---|---|
+| Global navigation | Where am I in the business? | Stable, broad business landmarks | Record actions, filters, object tabs, or page-specific commands |
+| Global topbar | Under which operating context am I working? | RITSEI identity, tenant/company/location/fiscal context, global search or command entry, justified quick-create, inbox/notifications, help, and identity | A second domain menu or object-level mutations |
+| Local navigation | Which capability in this domain am I using? | Contextual domain capabilities such as overview, orders, suppliers, receiving, or reporting | Repeated global destinations, object mutations, or a complete database table of contents |
+| Context header | Which object or situation is this? | Human-readable identity, identifier, lifecycle/operational state, impact, and a primary command entry where useful | Global operating context or repeated navigation labels |
+| Workspace | What is happening, and why? | The selected Product Pattern, evidence, dependencies, history, and task-specific content | New business authority or state inferred from presentation |
+| Command surface | What authorized business command can I perform? | Context-bound actions and their feedback | Navigation or frontend authorization authority |
 
-The topbar MUST remain thin and utility-oriented. It carries tenant, company, location, fiscal
-context, search, notifications, help, and identity. It MUST NOT carry the complete application
-navigation or business-object commands. Business-object identity, lifecycle, and primary actions
-belong in the contextual page/object header below the topbar.
+The topbar search and command entry MAY share a visual field, but search, destinations, objects, and
+mutating commands MUST remain semantically distinguishable. The global entry SHOULD support direct
+paths to known objects, destinations, and commands for experienced users; a keyboard shortcut such as
+`⌘K` MAY supplement it. A global command entry is a discovery path, not an authorization bypass; each mutation
+still invokes the owning typed command.
 
-The shell follows this reading order:
+#### Five Navigation Laws
+
+1. **Global structure stays stable.** Global business landmarks MUST keep a stable relative order
+   across routes and MUST indicate the current location. Exact domain taxonomy is a product decision.
+2. **One semantic level, one visual representation.** The same navigation meaning MUST NOT be
+   repeated across global navigation, local navigation, breadcrumbs, tabs, headers, and toolbars
+   without a distinct user need. Breadcrumbs MAY show real object hierarchy or traversal that is
+   otherwise unavailable; they MUST NOT be added by convention alone.
+3. **Navigation locates; commands change.** Navigation answers “Where can I go?” Commands answer
+   “What can I change?” They MUST remain distinct, and commands MUST use the owning authorized
+   boundary.
+4. **Preserve context until context becomes a burden.** Browsing, comparison, and investigation
+   SHOULD retain useful surrounding context. Deep editing, creation, and focused spatial work SHOULD
+   receive the space they need.
+5. **Workspace outranks navigation chrome.** When work and navigation compete for space, the
+   workspace MUST remain dominant; collapse or omit navigation layers that do not serve the current
+   task.
+
+#### Global and local navigation
+
+Global navigation MUST represent broad business landmarks rather than individual database entities.
+It MAY include `My Work`, broad domains such as Sales, Procurement, Inventory, Manufacturing, and
+Finance, Processes, Analytics, Master Data, and Settings. Its order MUST remain spatially stable;
+current-location indication MUST be visually and programmatically exposed (for example, with
+`aria-current="page"`), and keyboard access and accessible names MUST remain available. Active navigation MUST NOT visually compete with a blocked
+transaction, critical exception, or the object being edited.
+
+Global navigation MUST be collapsible. The expanded state supports discovery and learning; the
+collapsed state supports workspace-heavy work. The collapsed icon rail MUST NOT be the only canonical
+or discoverable state. In collapsed mode, every destination MUST retain an accessible name; a tooltip
+MAY supplement, but MUST NOT replace, that name.
+
+The global rail is one continuous structural surface, not a stack of selected SaaS pills. An active
+domain SHOULD read as a region within that surface through a restrained terrain-blue tonal field,
+stronger label/icon emphasis, and, where useful, a subtle 2–3px structural marker. It MUST NOT rely
+on a floating card, rounded pill, large colored tile, or glow as its primary active treatment. Any
+contour response MUST remain restrained and semantically meaningful.
+
+Local navigation MAY be a contextual side navigator, compact tabs/sections, or omitted when the
+workspace needs no second navigation level. It MUST collapse or disappear when its width burdens the
+work. It MUST NOT repeat global navigation or expose record mutations.
+
+#### Context, commands, and workspace priority
+
+The context header MUST sit below the global topbar and make the current object or operational
+situation recognizable. It SHOULD expose its identifier, lifecycle/operational state, and impact. It
+MAY host a primary command and compact secondary-command entry; if so, the same primary action MUST
+NOT be repeated with equal prominence in a second toolbar or command region.
+
+The workspace is the dominant visual surface. Its hierarchy SHOULD follow:
 
 ```text
-Sidebar       → where am I?
-Topbar        → under which operating context am I working?
-Page header   → what am I working on?
-Content       → what is happening?
-Commands      → what can I do?
+workspace and operational state
+> object/situation context
+> local navigation
+> global navigation
+> global utilities
+> decoration
 ```
 
-The sidebar MUST be collapsible rather than permanently icon-only. Expanded and collapsed states
-must preserve labels, keyboard access, current-location indication, and accessible names. Initial
-shell targets are approximately:
+The topbar MUST remain thin and utility-oriented. It MUST NOT repeat broad domain navigation or carry
+object-level commands such as approve, post, release, confirm, or cancel. Quick-create MAY appear only
+when it is a justified global operation; object-specific actions MUST remain with their object or
+situation context.
 
-```text
-Global topbar       48px
-Context header      56–72px
-Local navigation    40px
-Sidebar expanded    220–240px
-Sidebar collapsed   56–64px
-```
+The global topbar target is approximately `48px`; the context header `56–72px`; compact local tabs or
+secondary navigation approximately `40px`; expanded global navigation `220–240px`; and collapsed
+global navigation `56–64px`. These are system targets, not feature-level constants. The local
+navigator MAY use a side-column when its hierarchy warrants it.
 
-The shell must protect content width for dense enterprise tables, financial reports, ledgers, bills
-of materials, planning surfaces, and Process Studio. Avoid stacking a large sidebar, large header,
-breadcrumbs, tabs, toolbars, and filters when one semantic layer can carry the same information.
-
-Contour contrast MUST remain low enough that navigation labels and current location dominate.
+The shell MUST protect content width for dense tables, financial reports, ledgers, planning surfaces,
+and Process Studio. RITSEI MUST prefer one meaningful semantic layer over stacked sidebars, oversized
+headers, arbitrary breadcrumbs, tabs, toolbars, filters, and nested cards. Contour contrast MUST stay
+low enough that navigation labels, current location, and operational state dominate.
 
 ### Cards
 
-Cards are used only when grouping is needed. Avoid card-inside-card, every-metric-as-card,
-all-white floating panels, and excessive shadows. Large continuous surfaces are preferred when they
-make the information architecture clearer.
+Cards MUST be reserved for groups that materially improve comprehension. A visible boundary SHOULD
+represent a real conceptual boundary, not merely a component boundary. Card-inside-card,
+every-metric-as-card, all-white floating panels, and excessive shadows SHOULD NOT be used. Large
+continuous surfaces SHOULD be preferred when they keep one business object or situation coherent.
 
 ### Charts
 

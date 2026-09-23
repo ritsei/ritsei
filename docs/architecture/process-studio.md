@@ -2,8 +2,9 @@
 
 > **Status:** Canonical target architecture
 >
-> **Owns:** Process design-time semantics, typed action and event catalogs, RITSEI Process IR,
-> static process validation, definition governance, and compensation metadata.
+> **Owns:** Process Studio's canvas-centric workspace behavior and direct-manipulation boundaries,
+> process design-time semantics, typed action and event catalogs, RITSEI Process IR, static process
+> validation, definition governance, and compensation metadata.
 >
 > **Implementation status:** Owned by the
 > [Process Studio roadmap](../roadmap/process-studio.md) and `deno task roadmap:measure`. AI-assisted
@@ -1142,6 +1143,56 @@ Business object: SO-2026-18381
 Operator views expose safe typed failures, step state, retry eligibility,
 compensation progress, and required actions according to capability scope. Raw
 credentials, SQL, stack traces, and private provider payloads remain internal.
+
+## Process Studio workspace and shell
+
+Process Studio MUST inherit the canonical RITSEI global shell; it MUST NOT introduce an unrelated
+application shell or duplicate global navigation. Product Pattern and Flexible Workspace contracts
+are owned by [Design System §6](./design-system.md#6-product-patterns); shell roles and visual rules
+are owned by [Design System Navigation](./design-system.md#navigation-and-workspace-shell). Route and
+presentation-state ownership is defined in
+[`frontend.md`](./frontend.md#situation-oriented-operational-ui).
+
+Process-definition editing SHOULD use a canvas-centric Flexible Workspace. The global `Processes`
+landmark leads to local destinations such as `Definitions`, `Runs`, `Templates`, and `Exceptions`.
+The process navigator, canvas, and contextual inspector are separate presentation responsibilities:
+
+```text
+┌──────────────┬──────────────────────┬───────────────────────────┬──────────────┐
+│ Global       │ Process local        │                           │ Contextual   │
+│ navigation   │ navigator            │       Process canvas      │ inspector    │
+│              │ Definitions          │       [Node] → [Node]     │ when useful  │
+│              │ Runs                 │                           │              │
+│              │ Templates            │                           │              │
+│              │ Exceptions           │                           │              │
+└──────────────┴──────────────────────┴───────────────────────────┴──────────────┘
+```
+
+The Process Studio local navigator MAY collapse or use a compact local navigation form when its
+width burdens the canvas. The canvas MUST remain the visual center of process editing and SHOULD
+expand when navigation or inspector context is not needed. During focused spatial editing, global
+navigation MUST be collapsible and local navigation SHOULD collapse when appropriate.
+
+The inspector MUST be contextual, not permanent chrome, and MUST NOT own authoritative process or
+business truth. It MAY show a selected node or edge, process metadata, configuration, validation,
+dependencies, run state, evidence, or exception detail. Its values MUST derive from Process IR,
+validated edit intent, or authorized runtime projections. When there is no relevant selection or
+context, the inspector SHOULD close so the canvas can expand.
+Evidence, run, and exception details SHOULD be exposed when the task requires them, but MUST NOT be
+forced into permanent columns. Process Monitor and Inbox views SHOULD use the existing Product Pattern
+matching their operational job; neither is a canvas by default.
+
+Wide, medium, and small viewports MAY change the number and presentation of columns. A small viewport
+SHOULD focus on the canvas or selected context and MAY present the inspector as an overlay, drawer, or
+focused view. Responsive changes MUST preserve process/object identity, selection meaning, validation,
+commands, keyboard access, and focus behavior. Pane visibility and column layout are presentation
+state; a deep-linked selection MAY use typed router state. Opening an inspector or moving a node MUST
+NOT itself be interpreted as a business or Process IR transition.
+
+The canvas is an editing projection, not business truth. Node position, visual connection, selection,
+or completed drag MUST NOT be treated as process semantics or proof of an authorized transition.
+Every edit MUST remain a typed intent validated against the current definition and persisted only
+through the appropriate Process Studio command.
 
 ## Process Designer
 

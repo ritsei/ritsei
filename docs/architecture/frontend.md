@@ -2,8 +2,8 @@
 
 > **Status:** Canonical and active
 >
-> **Owns:** Frontend runtime shape, application-model and state ownership,
-> framework selection, routing boundaries, server-state handling, data-heavy UI
+> **Owns:** Frontend runtime shape, application-model and state ownership, framework selection,
+> routing boundaries, route/state composition of workspace modes, server-state handling, data-heavy UI
 > primitives, contract validation, and presentation-layer constraints.
 >
 > **Related documents**
@@ -209,8 +209,8 @@ integration template. See ADR-0072 and ADR-0086 for the ownership decision and p
 | Authoritative domain state | Backend domain, PostgreSQL, or approved financial ledger | The browser may render a decoded projection but cannot mutate authority directly. |
 | Application/workflow state | Effect Model and explicit transitions | Use for multi-step coordination, pending commands, retries, reconciliation, and lifecycle state. |
 | Remote server state | TanStack Solid Query | Own cache, invalidation, refresh, and server snapshots; do not mirror query data into unrelated stores. |
-| Presentation state | Solid signals, memos, stores, and context | Keep ephemeral mechanics local: focus, hover, popovers, tabs, column layout, drag state, and virtualization. |
-| Shareable navigation state | Router plus Effect Schema | Keep URL filters and navigation inputs typed, validated, and independent of domain implementations. |
+| Presentation state | Solid signals, memos, stores, and context | Keep ephemeral mechanics local: focus, hover, popovers, navigation expansion, temporary selection/column layout, drag state, and virtualization. |
+| Shareable navigation state | Router plus Effect Schema | Keep URL filters, destinations, object deep-links, and shareable selection typed, validated, and independent of domain implementations. |
 
 Not every signal is an application Message, and not every application Message
 belongs in a global Model. Local presentation state is intentionally allowed
@@ -758,16 +758,16 @@ These belong to the backend domain or explicit shared contracts.
 
 ## Situation-oriented operational UI
 
-RITSEI uses a **role-aware, situation-oriented operational UI**. It combines task-centered,
-process-centered, business-object, and exception-aware interaction models without making any one
-of those terms the complete product category. The phrase is RITSEI product vocabulary: it draws on
-those established ideas and case-management-like work without claiming compliance with a single
-external standard. The user should not have to discover the correct application before
-understanding what needs attention; the interface should expose the current operational situation
-and the commands that can safely advance it.
+RITSEI uses a **role-aware, situation-oriented operational UI**, not an application launcher with CRUD
+screens behind each entry. It combines task-centered, process-centered, business-object, and
+exception-aware work without making any one of those the complete product category. This is RITSEI
+product vocabulary, not a claim of compliance with a single external standard. The user SHOULD be able
+to recognize what needs attention and which safe, authorized command can advance it without first
+choosing among application silos. Routes and workspaces SHOULD support the cognitive sequence
+canonically defined in [Design System §6](./design-system.md#6-product-patterns).
 
-An operational situation is a frontend/projection composition, not a domain entity or source of
-truth:
+An operational situation MUST remain a frontend projection/composition, not a domain entity or
+source of truth:
 
 ```text
 Operational Situation
@@ -778,78 +778,55 @@ Operational Situation
 └── eligible domain commands
 ```
 
-Predictable work may be presented through process and business-object lifecycles. Evolving or
-exception-heavy work may use case-management-like composition. These are presentation and
-coordination choices; the owning domain contracts remain authoritative for facts, authorization,
-and invariants. The frontend may show an eligible command and request it, but only the backend
-owning domain authorizes and commits the business fact.
+Predictable work MAY be presented through process and business-object lifecycles. Evolving or
+exception-heavy work MAY use case-management-like composition. These are presentation and
+coordination choices; owning domain contracts MUST remain authoritative for facts, authorization,
+and invariants. The frontend MAY show an eligible command and request it, but only the owning backend
+domain MUST authorize and commit the business fact.
 
-RITSEI uses a hybrid shell, but not a 50/50 split:
+The application shell composes stable global landmarks and operating context with route-selected
+local capability and Product Pattern. This document owns how routes and frontend state select and
+preserve that composition; the visual and semantic shell contract is owned by
+[Design System — Navigation and workspace shell](./design-system.md#navigation-and-workspace-shell).
 
-```text
-GLOBAL STRUCTURE
-  persistent collapsible sidebar
+- Route and search inputs MUST be decoded through Effect Schema before selecting a destination,
+  local capability, object, or shareable view state.
+- TanStack Solid Query remains the owner of remote facts, and query results MUST NOT be mirrored into
+  unrelated presentation stores.
+- Solid presentation state MAY hold ephemeral selection, pane visibility, navigation expansion,
+  column layout, and focus. State that must survive a deep link or be shareable MUST be represented
+  by typed router state instead.
+- The Effect application model MAY coordinate multi-step commands when needed; the owning backend
+  command remains the only authority for business mutations.
 
-GLOBAL OPERATING CONTEXT
-  thin topbar: tenant, company, location, fiscal context, search, identity, utilities
+### Frontend agent entry
 
-DOMAIN
-  local navigation inside the active workspace
+Before implementing a route or screen, agents MUST:
 
-BUSINESS CONTEXT
-  contextual page or object header: identity, lifecycle, impact, commands
+1. Name the owning domain, active local capability, and user's primary work task.
+2. Select an existing Product Pattern using the matrix in [Design System §6](./design-system.md#6-product-patterns).
+3. Select a Flexible Workspace mode based on whether surrounding context helps; `MasterDetail` is
+   not universal. Follow the shared [shell contract](./design-system.md#navigation-and-workspace-shell).
+4. Identify which route inputs are shareable, which facts are remote query state, which interactions
+   are ephemeral presentation state, and whether explicit Effect coordination is needed.
+5. Verify object/situation identity, operational state, authorized command path, responsive behavior,
+   keyboard/focus behavior, and the outcome shown after an action.
 
-SITUATION
-  content: evidence, dependencies, process state, risks, and history
-
-ACTION
-  public domain commands through the CommandSurface pattern
-```
-
-The navigation rules are:
-
-- The **sidebar answers “where am I?”** and contains stable landmarks, not every record type or
-  action. Its default landmarks are `My Work`, `Attention`, broad `Operations` areas, `Processes`,
-  and `Analytics`.
-- The **topbar answers “under which operating context am I working?”** It carries global scope and
-  utilities, but must not become a second application menu or a collection of hidden dropdowns.
-- **Local navigation answers “which part of this domain workspace?”** It belongs inside the active
-  area, for example `Overview`, `Purchase Orders`, `Suppliers`, `Receipts`, and `Exceptions`.
-- The **contextual page/object header answers “what am I working on?”** It separates business-object
-  identity and lifecycle from application chrome and places the primary domain actions nearby.
-- **Content answers “what is happening?”** It presents the situation, evidence, relationships,
-  constraints, and process progress.
-- **Commands answer “what can I do?”** They invoke typed public operations; they do not mutate
-  authoritative state locally.
-
-The sidebar MUST be collapsible rather than permanently icon-only. Expanded and collapsed states
-must preserve labels, keyboard access, current-location indication, and accessible names. A shortcut
-such as `⌘B` MAY supplement an explicit toggle; hover or focus expansion MAY improve discoverability
-but MUST NOT be the only way to recover labels. Initial shell density targets are approximately:
-
-```text
-Global topbar       48px
-Context header      56–72px
-Local navigation    40px
-Sidebar expanded    220–240px
-Sidebar collapsed   56–64px
-```
-
-The shell must protect content width for dense tables, financial reports, ledgers, bills of
-materials, planning surfaces, and Process Studio. Avoid stacking a large sidebar, large header,
-breadcrumbs, tabs, toolbars, and filters when one semantic layer can carry the same information.
+Agents MUST reuse the existing shell and patterns. If they cannot solve a concrete semantic problem,
+they MUST describe that mismatch before proposing a new pattern or page-specific shell.
 
 ## Process Studio UI
 
-The planned Process Designer, Process Monitor, and Task Inbox are frontend
-features over public Process Studio contracts. The designer serializes the
-canonical RITSEI Process IR, discovers actions and events from typed catalogs,
-and renders static validation results from the backend contract. It must not
-hard-code domain capabilities or execute process semantics in the browser.
+The Process Designer, Process Monitor, and Task Inbox are frontend features over public Process
+Studio contracts. They inherit the canonical application shell; Process Studio's canvas-centric
+workspace specialization is owned by [`process-studio.md`](./process-studio.md#process-studio-workspace-and-shell).
+The designer serializes canonical RITSEI Process IR, discovers actions and events from typed catalogs,
+and renders static validation results from backend contracts. It MUST NOT hard-code domain
+capabilities or execute process semantics in the browser.
 
-Drag-and-drop is an enhancement, not the only interaction model. The Solid dnd-kit adapter may
+Drag-and-drop is an enhancement, not the only interaction model. The Solid dnd-kit adapter MAY
 implement bounded pointer, touch, and keyboard interaction behind the RITSEI interaction layer, but
-it must not become Process IR or business semantics. Every modeling action requires an accessible
+it MUST NOT become Process IR or business semantics. Every modeling action MUST have an accessible
 keyboard and structured-form alternative. Detailed process semantics, governance, catalogs,
 compensation, and roadmap are owned by [`process-studio.md`](./process-studio.md).
 

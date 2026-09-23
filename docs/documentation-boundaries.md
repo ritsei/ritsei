@@ -41,9 +41,9 @@ create a second independent definition.
 | Stateful entity ownership, routing, lifecycle, and runtime observability | [`./architecture/runtime-architecture.md`](./architecture/runtime-architecture.md) |
 | Canonical/runtime state classification and consistency protocol | [`./architecture/state-and-consistency.md`](./architecture/state-and-consistency.md) |
 | Financial ledger authority, execution, and reconciliation | [`./architecture/financial-ledger.md`](./architecture/financial-ledger.md) |
-| Frontend SPA, SolidJS 2.0, application state ownership, compiler boundary, routing, and TanStack UI infrastructure | [`./architecture/frontend.md`](./architecture/frontend.md) |
+| Frontend SPA, SolidJS 2.0, application state ownership, compiler boundary, routing, workspace-mode state integration, and TanStack UI infrastructure | [`./architecture/frontend.md`](./architecture/frontend.md) |
 | Skeleton loading UI, static geometry artifacts, registry, and build/runtime boundary | [`./architecture/skeleton.md`](./architecture/skeleton.md) |
-| Product Patterns, Interaction Grammar, Visual Grammar, semantic tokens, and design-system governance | [`./architecture/design-system.md`](./architecture/design-system.md) |
+| Navigation and shell visual contract, Product Patterns, Flexible Workspace presentation, Interaction Grammar, Visual Grammar, semantic tokens, and design-system governance | [`./architecture/design-system.md`](./architecture/design-system.md) |
 | PostgreSQL ownership, integrity, logical database, and physical data placement | [`./architecture/postgresql-19-architecture.md`](./architecture/postgresql-19-architecture.md) |
 | Workload planes, non-interference, WorkloadCells, shuffle sharding, and resource admission | [`./architecture/workload-isolation.md`](./architecture/workload-isolation.md) |
 | Analytic-plane authority, fact and metric contracts, freshness, projection providers, and activation gates | [`./architecture/analytics-architecture.md`](./architecture/analytics-architecture.md) |
@@ -57,7 +57,7 @@ create a second independent definition.
 | External integration surface and connector protocols | [`./architecture/integration-architecture.md`](./architecture/integration-architecture.md) |
 | Document snapshots, Document AST, renderer capabilities, template/artifact versioning, and rendering workload security | [`./architecture/document-rendering.md`](./architecture/document-rendering.md) |
 | Jobs and durable workflow engine selection | [`./architecture/durable-execution.md`](./architecture/durable-execution.md) |
-| Process Studio, catalogs, Process IR, definition governance, and static validation | [`./architecture/process-studio.md`](./architecture/process-studio.md) |
+| Process Studio canvas-centric workspace behavior, catalogs, Process IR, definition governance, and static validation | [`./architecture/process-studio.md`](./architecture/process-studio.md) |
 | Plugin trust and extension model | [`./architecture/plugin-architecture.md`](./architecture/plugin-architecture.md) |
 | Hierarchy and graph selection | [`./architecture/hierarchy-and-graph-selection.md`](./architecture/hierarchy-and-graph-selection.md) |
 | Native Zig boundary | [`./architecture/native-zig-kernel.md`](./architecture/native-zig-kernel.md) |
