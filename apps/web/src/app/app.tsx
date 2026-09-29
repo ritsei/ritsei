@@ -5,7 +5,6 @@ import type { AuthSession } from "../shared/contracts/generated/auth.ts"
 import type { Session } from "../shared/session.ts"
 import { layout } from "../ui/foundations/layout.ts"
 import { OperationalWorkspace } from "../ui/patterns/operational-workspace.tsx"
-import { surface } from "../ui/recipes/surface.ts"
 import { AuthCallback } from "./auth-callback.tsx"
 import { Connection } from "./connection.tsx"
 import {
@@ -28,39 +27,44 @@ const ProcessRoute = lazy(() => import("./process-route.tsx"))
 function HomeRoute() {
   const session = useContext(SessionContext)
   return (
-    <Show when={session.current()} keyed fallback={<Connection />}>
-      {(current) => (
-        <OperationalWorkspace
-          title="My work"
-          description={<p>Operational situations and assigned work for the active tenant.</p>}
-          status={
-            <span>
-              Connected to tenant{" "}
-              <code>{current.tenantId}</code>. Company, location, and fiscal context have not been
-              selected.
-            </span>
-          }
-        >
-          <section class={[surface(), layout.stack]} aria-labelledby="available-workspace-heading">
-            <h2 id="available-workspace-heading">Available workspace</h2>
-            <p>
-              User-account, Party, tenant Access administration, Sales, Procurement, Inventory, and
-              Process Studio operations are connected through public contracts. Additional
-              workspaces appear as their public read contracts and commands are connected.
-            </p>
-            <div class={layout.row}>
-              <a href="/user-accounts">Open user accounts</a>
-              <a href="/parties">Open Parties</a>
-              <a href="/access">Open Access</a>
-              <a href="/sales">Open Sales</a>
-              <a href="/procurement">Open Procurement</a>
+    <Show when={session.current()} fallback={<Connection />}>
+      <OperationalWorkspace
+        title="My work"
+        description={<p>Connected workspaces for this tenant.</p>}
+      >
+        <section class={layout.stack} aria-labelledby="available-workspace-heading">
+          <h2 id="available-workspace-heading">Available workspaces</h2>
+          <p class={layout.workspaceDescription}>
+            Choose a workspace to work with records and processes linked to this tenant.
+          </p>
+          <ul class={layout.directoryList}>
+            <li>
+              <a href="/sales">Open Revenue</a>
+            </li>
+            <li>
+              <a href="/procurement">Open Supply</a>
+            </li>
+            <li>
               <a href="/inventory">Open Inventory</a>
-              <a href="/accounting">Open Accounting</a>
+            </li>
+            <li>
+              <a href="/accounting">Open Finance</a>
+            </li>
+            <li>
               <a href="/processes">Open Process Studio</a>
-            </div>
-          </section>
-        </OperationalWorkspace>
-      )}
+            </li>
+            <li>
+              <a href="/parties">Open Parties</a>
+            </li>
+            <li>
+              <a href="/user-accounts">Open user accounts</a>
+            </li>
+            <li>
+              <a href="/access">Open Access</a>
+            </li>
+          </ul>
+        </section>
+      </OperationalWorkspace>
     </Show>
   )
 }

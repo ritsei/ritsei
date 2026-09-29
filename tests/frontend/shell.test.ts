@@ -134,8 +134,13 @@ it.effect(
         await page.getByRole("button", { name: "Sign in locally", exact: true }).click()
         await page.getByRole("heading", { name: "My work", exact: true }).waitFor()
         const tenantSelect = page.getByRole("combobox", { name: "Active tenant", exact: true })
+        const switched = page.waitForResponse((response) =>
+          new URL(response.url()).pathname === "/api/auth/session" &&
+          response.request().headers()["x-tenant-id"] === secondTenant
+        )
         await tenantSelect.selectOption(secondTenant)
-        await page.getByText(secondTenant, { exact: true }).waitFor()
+        await switched
+        assert.equal(await tenantSelect.inputValue(), secondTenant)
         assert.equal(sessionTenantHeaders.at(-1), secondTenant)
 
         const logoutResponse = page.waitForResponse((response) =>

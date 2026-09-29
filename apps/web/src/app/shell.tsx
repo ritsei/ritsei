@@ -20,8 +20,7 @@ import { SessionContext } from "./session.ts"
 type NavigationItem = Readonly<{
   label: string
   marker: string
-  href?: string
-  unavailableReason?: string
+  href: string
 }>
 
 type NavigationSection = Readonly<{
@@ -34,11 +33,6 @@ const navigationSections: readonly NavigationSection[] = [
     label: "Work",
     items: [
       { label: "My work", marker: "MW", href: "/" },
-      {
-        label: "Attention",
-        marker: "AT",
-        unavailableReason: "Attention projections are not connected yet.",
-      },
     ],
   },
   {
@@ -62,16 +56,6 @@ const navigationSections: readonly NavigationSection[] = [
       { label: "Parties", marker: "PT", href: "/parties" },
       { label: "User accounts", marker: "UA", href: "/user-accounts" },
       { label: "Access", marker: "AC", href: "/access" },
-    ],
-  },
-  {
-    label: "Insight",
-    items: [
-      {
-        label: "Analytics",
-        marker: "AN",
-        unavailableReason: "Analytics remains outside the current frontend slice.",
-      },
     ],
   },
 ]
@@ -123,12 +107,11 @@ function ContextItem(props: {
   label: string
   value: string
   title?: string
-  optional?: boolean
   code?: boolean
 }) {
   return (
     <span
-      class={[layout.contextItem, props.optional && layout.contextItemOptional]}
+      class={layout.contextItem}
       title={props.title}
     >
       <span class={layout.contextLabel}>{props.label}</span>
@@ -139,6 +122,7 @@ function ContextItem(props: {
 
 function NavigationEntry(props: {
   item: NavigationItem
+  active: boolean
   collapsed: boolean
   closeMobile: () => void
   captureFirst?: (element: HTMLAnchorElement) => void
@@ -148,32 +132,21 @@ function NavigationEntry(props: {
   const captureFirst = untrack(() => props.captureFirst)
   const labelClass =
     () => [layout.navigationLabel, props.collapsed && layout.navigationLabelCollapsed]
-  return item.href
-    ? (
-      <a
-        ref={(element) => captureFirst?.(element)}
-        href={item.href}
-        class={layout.navigationItem}
-        aria-label={item.label}
-        title={props.collapsed ? item.label : undefined}
-        onClick={closeMobile}
-      >
-        <span class={layout.navigationMarker} aria-hidden="true">{item.marker}</span>
-        <span class={labelClass()}>{item.label}</span>
-      </a>
-    )
-    : (
-      <span
-        class={[layout.navigationItem, layout.navigationItemUnavailable]}
-        role="link"
-        aria-disabled="true"
-        aria-label={`${item.label}, unavailable`}
-        title={item.unavailableReason}
-      >
-        <span class={layout.navigationMarker} aria-hidden="true">{item.marker}</span>
-        <span class={labelClass()}>{item.label}</span>
-      </span>
-    )
+  return (
+    <a
+      ref={(element) => captureFirst?.(element)}
+      href={item.href}
+      class={layout.navigationItem}
+      data-active={props.active ? "" : undefined}
+      aria-current={props.active ? "page" : undefined}
+      aria-label={item.label}
+      title={props.collapsed ? item.label : undefined}
+      onClick={closeMobile}
+    >
+      <span class={layout.navigationMarker} aria-hidden="true">{item.marker}</span>
+      <span class={labelClass()}>{item.label}</span>
+    </a>
+  )
 }
 
 // Fallow: the shell intentionally orchestrates responsive navigation, session state, and workspace layout.
@@ -182,7 +155,9 @@ export function ApplicationShell(props: { children: JSX.Element }) {
   const session = useContext(SessionContext)
   const location = useLocation()
   const navigate = useNavigate()
-  const [dark, setDark] = createSignal(false)
+  const [dark, setDark] = createSignal(
+    globalThis.matchMedia("(prefers-color-scheme: dark)").matches,
+  )
   const [collapsed, setCollapsed] = createSignal(false)
   const [compact, setCompact] = createSignal(globalThis.matchMedia("(max-width: 767px)").matches)
   const [mobileOpen, setMobileOpen] = createSignal(false)
@@ -300,15 +275,11 @@ export function ApplicationShell(props: { children: JSX.Element }) {
                     </select>
                   </label>
                 </Show>
-                <ContextItem label="Company" value="Not selected" optional />
-                <ContextItem label="Location" value="Not selected" optional />
-                <ContextItem label="Fiscal context" value="Not selected" optional />
               </>
             )}
           </Show>
         </div>
         <div class={layout.topbarActions}>
-          <span class={layout.previewBadge}>Development</span>
           <Button
             type="button"
             aria-pressed={dark() ? "true" : "false"}
@@ -368,6 +339,10 @@ export function ApplicationShell(props: { children: JSX.Element }) {
                       {(item, itemIndex) => (
                         <NavigationEntry
                           item={item}
+                          active={item.href === "/"
+                            ? location.pathname === "/"
+                            : location.pathname === item.href ||
+                              location.pathname.startsWith(`${item.href}/`)}
                           collapsed={collapsed()}
                           closeMobile={closeMobileNavigation}
                           captureFirst={sectionIndex() === 0 && itemIndex() === 0
@@ -381,14 +356,6 @@ export function ApplicationShell(props: { children: JSX.Element }) {
               )}
             </For>
           </nav>
-          <p
-            class={[
-              layout.sidebarNote,
-              collapsed() && layout.sidebarNoteCollapsed,
-            ]}
-          >
-            Backend authorization remains authoritative.
-          </p>
         </aside>
 
         <div class={layout.workspace}>
@@ -399,16 +366,37 @@ export function ApplicationShell(props: { children: JSX.Element }) {
               class={layout.localNavigationLinks}
             >
               <For each={localNavigation().items}>
-                {(item) => <a href={item.href}>{item.label}</a>}
+                {(item) => (
+                  <a
+                    href={item.href}
+                    data-active={location.pathname === item.href ||
+                        location.pathname.startsWith(`${item.href}/`)
+                      ? ""
+                      : undefined}
+                    aria-current={location.pathname === item.href ? "page" : undefined}
+                  >
+                    {item.label}
+                  </a>
+                )}
               </For>
             </nav>
+            <Show when={session.current()} keyed>
+              {(current) => (
+                <span class={layout.localTenant} title={current.tenantId}>
+                  Tenant {compactTenantId(current.tenantId)}
+                </span>
+              )}
+            </Show>
           </div>
           <main id="main" tabindex="-1" class={layout.main}>
             <Errored
               fallback={
                 <section class={layout.stack}>
                   <h1>Workspace unavailable</h1>
-                  <p role="alert">This page could not load. Reload the browser to try again.</p>
+                  <p role="alert">This workspace could not load. Reload the page to try again.</p>
+                  <Button type="button" onClick={() => globalThis.location.reload()}>
+                    Reload page
+                  </Button>
                 </section>
               }
             >
