@@ -77,11 +77,23 @@ it.effect(
         })
 
         await connect(page, url)
-        await page.getByRole("cell", { name: originalEmail, exact: true })
+        await page.getByRole("link", { name: originalEmail, exact: true })
           .waitFor()
         assert.equal(requestHeaders?.authorization, "Bearer test-session")
         assert.equal(requestHeaders?.["x-tenant-id"], tenantId)
         assert.equal(listCount, 1)
+        assert.equal(
+          await page.getByRole("link", { name: "User accounts", exact: true })
+            .getAttribute("aria-current"),
+          "page",
+        )
+        await page.getByRole("searchbox", { name: "Find email or ID" }).fill("missing")
+        await page.getByText("No loaded accounts match these filters.").waitFor()
+        await page.getByRole("button", { name: "Clear filters" }).click()
+        await page.getByRole("combobox", { name: "Global status" }).selectOption("disabled")
+        await page.getByText("No loaded accounts match these filters.").waitFor()
+        await page.getByRole("button", { name: "Clear filters" }).click()
+        await page.getByRole("link", { name: originalEmail, exact: true }).waitFor()
 
         const createTrigger = page.getByRole("button", {
           name: "Create account",
@@ -106,7 +118,7 @@ it.effect(
           .fill(createdEmail)
         await createDialog.getByRole("button", { name: "Create account", exact: true })
           .click()
-        await page.getByRole("cell", { name: createdEmail, exact: true }).waitFor()
+        await page.getByRole("link", { name: createdEmail, exact: true }).waitFor()
         assert.deepEqual(createBody, { email: createdEmail })
 
         await page.getByRole("link", {
@@ -139,8 +151,10 @@ it.effect(
         )
         await page.getByRole("button", { name: "Save email", exact: true })
           .click()
-        await page.getByRole("cell", { name: updatedEmail, exact: true })
-          .waitFor()
+        await page.getByRole("heading", { name: updatedEmail, exact: true }).waitFor()
+        await page.getByRole("status").filter({ hasText: "Email saved." }).waitFor()
+        await page.getByRole("link", { name: "All accounts" }).click()
+        await page.getByRole("link", { name: updatedEmail, exact: true }).waitFor()
         assert.deepEqual(patchBody, { email: updatedEmail })
 
         assert.equal(
@@ -215,7 +229,7 @@ it.effect(
           name: "Try loading again",
           exact: true,
         }).click()
-        await page.getByRole("cell", { name: originalEmail, exact: true })
+        await page.getByRole("link", { name: originalEmail, exact: true })
           .waitFor()
         await page.getByRole("link", {
           name: `Open account for ${originalEmail}`,

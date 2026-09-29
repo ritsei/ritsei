@@ -44,7 +44,7 @@ export function createAccountMutation(
   }))
 }
 
-export function createAccountEmailMutation(scope: ApiScope) {
+export function createAccountEmailMutation(scope: ApiScope, afterSuccess?: () => void) {
   const client = useQueryClient()
   return useMutation<
     UserAccount,
@@ -54,6 +54,7 @@ export function createAccountEmailMutation(scope: ApiScope) {
     mutationFn: (input) => runRequest(scope, updateAccount(input)),
     onSuccess: (account) => {
       client.setQueryData(serverQueryKey(scope.tenantId, accountKey(account.id)), account)
+      afterSuccess?.()
       return refreshAccountCollection(client, scope.tenantId)
     },
   }))

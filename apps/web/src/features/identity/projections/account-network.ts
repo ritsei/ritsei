@@ -18,7 +18,7 @@ export const projectAccountNetwork = (
     value: activity,
     semantics: {
       label: "Tenant account relationships",
-      description: "A visual summary of linked accounts. The table below remains authoritative.",
+      description: "A visual summary of linked accounts. The account table remains authoritative.",
     },
     fallback: {
       summary: accounts.length === 0

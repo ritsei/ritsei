@@ -1,19 +1,16 @@
-import { createSignal, onSettled, Show, untrack, useContext } from "solid-js"
+import { createMemo, createSignal, onSettled, Show, untrack, useContext } from "solid-js"
 import type { UserAccount } from "../../shared/contracts/generated/identity.ts"
 import { failureMessage } from "../../shared/api.ts"
 import { CommandFeedback, QueryBoundary } from "../../shared/request-feedback.tsx"
 import { ApiRuntime } from "../../shared/runtime.ts"
 import { layout } from "../../ui/foundations/layout.ts"
-import { Badge } from "../../ui/primitives/badge.tsx"
 import { Button } from "../../ui/primitives/button.tsx"
 import { createDialogOpenChange, Dialog } from "../../ui/primitives/dialog.tsx"
 import { Form } from "../../ui/primitives/form.tsx"
 import { FormField } from "../../ui/primitives/form-field.tsx"
 import { Input } from "../../ui/primitives/input.tsx"
 import { DataTable } from "../../ui/patterns/data-table.tsx"
-import { EntityWorkspace } from "../../ui/patterns/entity-workspace.tsx"
 import { CartographyField } from "../../ui/renderers/cartography/cartography-field.tsx"
-import { surface } from "../../ui/recipes/surface.ts"
 import { projectAccountNetwork } from "./projections/account-network.ts"
 import {
   createAccountEmailMutation,
@@ -22,41 +19,58 @@ import {
   createAccountsQuery,
 } from "./queries.ts"
 
-function AccountTable(props: {
-  accounts: readonly UserAccount[]
-  selectedAccountId?: string
-}) {
+function AccountStatus(props: { status: UserAccount["status"] }) {
+  return (
+    <span
+      class={[
+        layout.statusText,
+        props.status === "active" ? layout.statusActive : layout.statusDisabled,
+      ]}
+    >
+      {props.status === "active" ? "Active" : "Disabled"}
+    </span>
+  )
+}
+
+function AccountTable(props: { accounts: readonly UserAccount[] }) {
   return (
     <DataTable
       surface={false}
-      caption="Tenant membership accounts · maximum 200 records"
+      tableClass={layout.collectionTable}
+      caption="User accounts linked to this tenant"
       rows={props.accounts}
-      getRowClass={(account) =>
-        account.id === props.selectedAccountId ? layout.tableRowSelected : undefined}
       columns={[
         {
           id: "email",
           header: "Email",
+          rowHeader: true,
           cell: (account) => (
-            <a href={`/user-accounts/${encodeURIComponent(account.id)}`}>
-              {account.email}
-            </a>
+            <div class={layout.rowIdentity}>
+              <a class={layout.quietLink} href={`/user-accounts/${encodeURIComponent(account.id)}`}>
+                {account.email}
+              </a>
+              <span class={[layout.rowReference, layout.mobileReference]} title={account.id}>
+                ID {account.id.slice(0, 8)}…{account.id.slice(-4)}
+              </span>
+            </div>
           ),
+        },
+        {
+          id: "reference",
+          header: "Account ID",
+          cell: (account) => <span class={layout.rowReference}>{account.id}</span>,
         },
         {
           id: "status",
           header: "Global status",
-          cell: (account) => (
-            <Badge tone={account.status === "active" ? "success" : "warning"}>
-              {account.status === "active" ? "Active" : "Disabled"}
-            </Badge>
-          ),
+          cell: (account) => <AccountStatus status={account.status} />,
         },
         {
           id: "action",
-          header: "Action",
+          header: "View",
           cell: (account) => (
             <a
+              class={layout.quietLink}
               href={`/user-accounts/${encodeURIComponent(account.id)}`}
               aria-label={`Open account for ${account.email}`}
             >
@@ -89,7 +103,7 @@ function CreateAccountDialog(props: { reload: () => Promise<unknown> }) {
       trigger={<span>Create account</span>}
       triggerVariant="primary"
       title="Create user account"
-      description="Create a global identity and link it to the connected tenant. The server authorizes the command before writing."
+      description="Create a global account and link it to this tenant."
     >
       <Form
         ref={(element) => {
@@ -111,7 +125,7 @@ function CreateAccountDialog(props: { reload: () => Promise<unknown> }) {
         <FormField
           label="Email"
           required
-          helperText="The identity service normalizes casing and surrounding whitespace."
+          helperText="This email identifies the account across tenants."
           error={invalid() || mutation.error?.kind === "validation"
             ? "Enter a nonblank email."
             : undefined}
@@ -158,18 +172,19 @@ function EmailEditor(
     account: UserAccount
     close: () => void
     reload: () => Promise<unknown>
+    saved: () => void
   },
 ) {
   const scope = useContext(ApiRuntime)
   const account = untrack(() => props.account)
   const [invalid, setInvalid] = createSignal(false)
-  const mutation = createAccountEmailMutation(scope)
+  const mutation = createAccountEmailMutation(scope, props.saved)
   let emailInput: HTMLInputElement | undefined
   onSettled(() => emailInput?.focus())
   return (
-    <section class={surface()} aria-labelledby="edit-heading">
+    <section class={layout.documentSection} aria-labelledby="edit-heading">
       <Form
-        class={layout.stack}
+        class={layout.formArea}
         onSubmit={(value) => {
           if (mutation.isPending || mutation.error?.kind === "unknown-outcome") return
           const email = value.email
@@ -182,15 +197,14 @@ function EmailEditor(
           mutation.mutate({ id: account.id, email })
         }}
       >
-        <h3 id="edit-heading">Edit account email</h3>
-        <p>
-          This changes the global account, including its use in other tenants. The server checks
-          your permission again when you save.
+        <h3 id="edit-heading">Change email</h3>
+        <p class={layout.workspaceDescription}>
+          The new address will identify this account wherever it is linked.
         </p>
         <FormField
           label="Email"
           required
-          helperText="Account changes are never retried automatically."
+          helperText="Account changes are not retried automatically."
           error={invalid() || mutation.error?.kind === "validation"
             ? "Enter a nonblank email."
             : undefined}
@@ -221,7 +235,7 @@ function EmailEditor(
             ? "Email saved. The tenant account views are refreshing."
             : ""}
         </p>
-        <div class={layout.row}>
+        <div class={layout.formActions}>
           <Button
             variant="primary"
             type="submit"
@@ -254,71 +268,93 @@ function AccountDetail(props: { id: string }) {
   const id = untrack(() => props.id)
   const query = createAccountQuery(scope, id)
   const [editing, setEditing] = createSignal(false)
+  const [saved, setSaved] = createSignal(false)
   let editTrigger: HTMLButtonElement | undefined
   const closeEditor = () => {
     setEditing(false)
-    editTrigger?.focus()
+    queueMicrotask(() => editTrigger?.focus())
   }
   return (
-    <section class={layout.stack} aria-labelledby="account-detail-heading">
-      <div class={layout.row}>
-        <h2 id="account-detail-heading">Account detail</h2>
-        <Button
-          type="button"
-          onClick={() => {
-            void query.refetch()
-          }}
-        >
-          Reload detail
-        </Button>
-      </div>
+    <section class={layout.stack} aria-label="User account">
+      <a class={layout.quietLink} href="/user-accounts">← All accounts</a>
+      <header class={layout.workspaceHeading}>
+        <div class={layout.workspaceTitle}>
+          <span class={layout.resultCount}>Global account</span>
+          <h1>{query.data?.email ?? "User account"}</h1>
+          <Show
+            when={query.data}
+            keyed
+            fallback={<span class={layout.objectReference}>Account ID {id}</span>}
+          >
+            {(account) => (
+              <div class={layout.objectMetadata}>
+                <AccountStatus status={account.status} />
+                <span class={layout.objectReference}>Account ID {account.id}</span>
+              </div>
+            )}
+          </Show>
+        </div>
+        <Show when={query.data && !editing()}>
+          <div class={layout.row}>
+            <Button
+              ref={(element) => editTrigger = element}
+              variant="primary"
+              type="button"
+              onClick={() => {
+                setSaved(false)
+                setEditing(true)
+              }}
+            >
+              Edit email
+            </Button>
+            <Button type="button" onClick={() => void query.refetch()}>Reload detail</Button>
+          </div>
+        </Show>
+      </header>
+      <Show when={saved()}>
+        <p role="status" class={layout.statusActive}>Email saved.</p>
+      </Show>
       <QueryBoundary label="account detail" retry={() => query.refetch()}>
         <Show when={query.data} keyed>
           {(account) => (
-            <div class={layout.stack}>
-              <dl class={layout.detailList}>
-                <div class={layout.detailItem}>
-                  <dt class={layout.detailTerm}>Email</dt>
-                  <dd class={layout.detailValue}>{account.email}</dd>
-                </div>
-                <div class={layout.detailItem}>
-                  <dt class={layout.detailTerm}>Global status</dt>
-                  <dd class={layout.detailValue}>
-                    <Badge tone={account.status === "active" ? "success" : "warning"}>
-                      {account.status === "active" ? "Active" : "Disabled"}
-                    </Badge>
-                  </dd>
-                </div>
-                <div class={layout.detailItem}>
-                  <dt class={layout.detailTerm}>Account ID</dt>
-                  <dd class={[layout.detailValue, layout.code]}>{account.id}</dd>
-                </div>
-              </dl>
-
-              <div class={layout.row}>
-                <Button
-                  ref={(element) => {
-                    editTrigger = element
-                  }}
-                  type="button"
-                  onClick={() => setEditing(true)}
+            <div class={layout.documentGrid}>
+              <section class={layout.stack} aria-labelledby="account-detail-heading">
+                <h2 id="account-detail-heading">Account detail</h2>
+                <Show
+                  when={editing()}
+                  fallback={
+                    <dl class={layout.detailList}>
+                      <div class={layout.detailItem}>
+                        <dt class={layout.detailTerm}>Email</dt>
+                        <dd class={layout.detailValue}>{account.email}</dd>
+                      </div>
+                    </dl>
+                  }
                 >
-                  Edit email
-                </Button>
-              </div>
-
-              <Show when={editing()}>
-                <EmailEditor
-                  account={account}
-                  close={closeEditor}
-                  reload={() => query.refetch()}
-                />
-              </Show>
-              <p class={layout.muted}>
-                Global disable, enable, and permanent removal are trusted identity operations and
-                are intentionally unavailable to tenant administrators. Manage tenant access in
-                Access instead.
-              </p>
+                  <EmailEditor
+                    account={account}
+                    close={closeEditor}
+                    saved={() => {
+                      closeEditor()
+                      setSaved(true)
+                    }}
+                    reload={() => query.refetch()}
+                  />
+                </Show>
+              </section>
+              <aside class={layout.documentAside} aria-label="Account scope">
+                <div class={layout.stack}>
+                  <h2>Tenant access</h2>
+                  <p class={layout.workspaceDescription}>
+                    Account email is global. Tenant membership and permissions are managed
+                    separately.
+                  </p>
+                  <a href="/access">Open Access</a>
+                  <p class={layout.workspaceDescription}>
+                    Global status changes and removal are not available in this workspace.
+                  </p>
+                </div>
+              </aside>
             </div>
           )}
         </Show>
@@ -327,60 +363,114 @@ function AccountDetail(props: { id: string }) {
   )
 }
 
-export function Accounts(props: { selectedAccountId?: string }) {
+function AccountCollection() {
   const scope = useContext(ApiRuntime)
   const query = createAccountsQuery(scope)
-  const [selectedVisualSegment, setSelectedVisualSegment] = createSignal<string | null>(null)
+  const [search, setSearch] = createSignal("")
+  const [status, setStatus] = createSignal("all")
+  const filtered = createMemo(() => {
+    const term = search().trim().toLocaleLowerCase()
+    return (query.data ?? []).filter((account) =>
+      (status() === "all" || account.status === status()) &&
+      (account.email.toLocaleLowerCase().includes(term) ||
+        account.id.toLocaleLowerCase().includes(term))
+    )
+  })
   return (
-    <EntityWorkspace
-      title="User accounts"
-      description={
-        <p>
-          Global identities linked to the connected tenant. Account provisioning and email changes
-          remain server-authorized; tenant membership state is managed separately in Access.
-        </p>
-      }
-      headerActions={
-        <div class={layout.row}>
-          <CreateAccountDialog reload={() => query.refetch()} />
-          <Button
-            type="button"
-            onClick={() => {
-              void query.refetch()
-            }}
-          >
-            Reload accounts
-          </Button>
+    <section class={layout.stack} aria-label="User accounts">
+      <header class={layout.workspaceHeading}>
+        <div class={layout.workspaceTitle}>
+          <h1>User accounts</h1>
+          <p class={layout.workspaceDescription}>
+            Global accounts linked to this tenant. Manage membership and permissions in Access.
+          </p>
         </div>
-      }
-      aside={props.selectedAccountId ? <AccountDetail id={props.selectedAccountId} /> : undefined}
-    >
+        <CreateAccountDialog reload={() => query.refetch()} />
+      </header>
       <QueryBoundary
         label="user accounts"
         retryLabel="Try loading again"
         retry={() => query.refetch()}
       >
+        <div class={layout.collectionToolbar}>
+          <p class={layout.resultCount} role="status">
+            {filtered().length} of {query.data.length} loaded accounts
+          </p>
+          <div class={layout.collectionControls}>
+            <label class={[layout.fieldLabel, layout.searchField]}>
+              Find email or ID
+              <Input
+                type="search"
+                value={search()}
+                onInput={(event) => setSearch(event.currentTarget.value)}
+                placeholder="Search loaded accounts"
+              />
+            </label>
+            <label class={[layout.fieldLabel, layout.filterField]}>
+              Global status
+              <select
+                class={layout.filterSelect}
+                value={status()}
+                onChange={(event) => setStatus(event.currentTarget.value)}
+              >
+                <option value="all">All statuses</option>
+                <option value="active">Active</option>
+                <option value="disabled">Disabled</option>
+              </select>
+            </label>
+            <Button type="button" onClick={() => void query.refetch()}>Reload accounts</Button>
+          </div>
+        </div>
         <Show
-          when={query.data.length > 0}
-          fallback={<p role="status">No user accounts are linked to this tenant.</p>}
+          when={filtered().length > 0}
+          fallback={
+            <div class={layout.emptyCollection} role="status">
+              <p>
+                {query.data.length === 0
+                  ? "No user accounts are linked to this tenant."
+                  : "No loaded accounts match these filters."}
+              </p>
+              <Show when={query.data.length > 0}>
+                <Button
+                  type="button"
+                  onClick={() => {
+                    setSearch("")
+                    setStatus("all")
+                  }}
+                >
+                  Clear filters
+                </Button>
+              </Show>
+            </div>
+          }
         >
-          <CartographyField
-            intent={projectAccountNetwork(query.data)}
-            selectedMarkerId={selectedVisualSegment() ?? undefined}
-            onInteraction={(interaction) => {
-              if (interaction.type === "select") setSelectedVisualSegment(interaction.targetId)
-            }}
-          >
-            <Show when={selectedVisualSegment()}>
-              {(segment) => <p role="status">Selected visual segment: {segment()}</p>}
-            </Show>
-          </CartographyField>
-          <AccountTable
-            accounts={query.data}
-            selectedAccountId={props.selectedAccountId}
-          />
+          <AccountTable accounts={filtered()} />
+        </Show>
+        <Show when={query.data.length > 0}>
+          <details class={layout.documentSection}>
+            <summary>Account distribution</summary>
+            <CartographyField
+              intent={projectAccountNetwork(query.data)}
+              selectedMarkerId={status() === "all" ? undefined : status()}
+              onInteraction={(interaction) => {
+                if (interaction.type === "select") setStatus(interaction.targetId)
+              }}
+            >
+              <Show when={status() !== "all"}>
+                <p role="status">Showing {status()} accounts in the table above.</p>
+              </Show>
+            </CartographyField>
+          </details>
         </Show>
       </QueryBoundary>
-    </EntityWorkspace>
+    </section>
+  )
+}
+
+export function Accounts(props: { selectedAccountId?: string }) {
+  return (
+    <Show when={props.selectedAccountId} fallback={<AccountCollection />}>
+      {(id) => <AccountDetail id={id()} />}
+    </Show>
   )
 }

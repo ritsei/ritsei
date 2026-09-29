@@ -33,18 +33,25 @@ it.effect(
         await page.getByRole("link", { name: "User accounts", exact: true }).click()
         await page.waitForURL("**/user-accounts")
 
+        await page.getByText("Account distribution", { exact: true }).click()
         const field = page.getByRole("group", { name: "Tenant account relationships" })
         await field.waitFor()
         assert.isTrue(await field.isVisible())
-        assert.isTrue(await page.getByText("The table below remains authoritative.").isVisible())
+        assert.isTrue(await page.getByText("The account table remains authoritative.").isVisible())
 
         const activeMarker = page.getByRole("button", { name: "Active accounts: 1" })
         await activeMarker.focus()
         await page.keyboard.press("Enter")
         assert.equal(await activeMarker.getAttribute("aria-pressed"), "true")
         assert.isTrue(
-          await page.getByText("Selected visual segment: active", { exact: true }).isVisible(),
+          await page.getByText("Showing active accounts in the table above.", { exact: true })
+            .isVisible(),
         )
+        assert.equal(
+          await page.getByRole("combobox", { name: "Global status" }).inputValue(),
+          "active",
+        )
+        assert.isTrue(await page.getByText("1 of 2 loaded accounts").isVisible())
 
         await page.emulateMedia({ reducedMotion: "reduce", forcedColors: "active" })
         const results = await new AxeBuilder({ page }).withTags(["wcag2a", "wcag2aa"]).analyze()
