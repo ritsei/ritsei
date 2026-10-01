@@ -143,9 +143,15 @@ describe("repository tooling", () => {
     assert.deepStrictEqual(
       analyzeAiBoundary([{
         path: "modules/integrations/src/model-adapter.ts",
-        source: providerImport("effect/unstable/ai", "{ LanguageModel }"),
+        source: providerImport("effect/ai", "{ LanguageModel }"),
       }]),
       [],
+    )
+    assert.isTrue(
+      analyzeAiBoundary([{
+        path: "modules/sales/src/service.ts",
+        source: providerImport("effect/ai/LanguageModel", "* as LanguageModel"),
+      }]).some((failure) => failure.includes("must stay under modules/integrations/")),
     )
     const integrationSchemaPath = ["../../../db/schema", "integration.ts"].join("/")
     assert.deepStrictEqual(

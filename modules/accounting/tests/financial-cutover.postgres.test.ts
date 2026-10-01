@@ -1,6 +1,6 @@
 import { assert, it } from "@effect/vitest"
 import * as Effect from "effect/Effect"
-import * as Encoding from "effect/Encoding"
+import * as Base64Url from "effect/encoding/Base64Url"
 import * as Layer from "effect/Layer"
 
 import {
@@ -167,7 +167,7 @@ it.effect.skipIf(databaseUrl === undefined)(
           assert.strictEqual(rejected.status, "rejected")
           assert.strictEqual(rejected.signatureAlgorithm, "Ed25519")
           const rejectedSignature = yield* Effect.fromResult(
-            Encoding.decodeBase64Url(rejected.signature),
+            Base64Url.decode(rejected.signature),
           )
           assert.strictEqual(
             yield* signer.verify(

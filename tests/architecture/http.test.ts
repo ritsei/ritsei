@@ -21,8 +21,8 @@ it.effect("keeps HTTP routing Effect-native", () =>
     ) {
       assert.notInclude(source, forbidden)
     }
-    assert.include(source, "effect/unstable/http/HttpRouter")
-    assert.include(source, "effect/unstable/httpapi/HttpApiEndpoint")
+    assert.include(source, "effect/http/HttpRouter")
+    assert.include(source, "effect/http-api/HttpApiEndpoint")
     assert.include(source, "@effect/platform-deno/DenoHttpServer")
     assert.include(source, "@effect/platform-deno/DenoRuntime")
   }))

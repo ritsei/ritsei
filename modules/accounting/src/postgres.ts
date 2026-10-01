@@ -1,6 +1,6 @@
 import { and, asc, desc, eq, gte, inArray, lte } from "drizzle-orm"
 import * as Clock from "effect/Clock"
-import * as Encoding from "effect/Encoding"
+import * as Base64Url from "effect/encoding/Base64Url"
 import * as Effect from "effect/Effect"
 import * as Option from "effect/Option"
 import * as Result from "effect/Result"
@@ -102,7 +102,7 @@ const decodeFinancialVerificationSignature = (
   tenantId: string,
   legalEntityId: string,
 ) =>
-  Effect.fromResult(Encoding.decodeBase64Url(signature)).pipe(
+  Effect.fromResult(Base64Url.decode(signature)).pipe(
     Effect.mapError(() =>
       new FinancialVerificationArtifactInvalid({ tenantId, legalEntityId, reason: "unsigned" })
     ),
@@ -683,7 +683,7 @@ export const makeAccountingService = Effect.gen(function* () {
             })
           ),
         )
-        const signature = Encoding.encodeBase64Url(signatureBytes)
+        const signature = Base64Url.encode(signatureBytes)
         const [inserted] = yield* database.query(
           (db) =>
             db.insert(financialVerificationArtifacts).values({

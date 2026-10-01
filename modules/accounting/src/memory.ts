@@ -1,5 +1,5 @@
 import * as Clock from "effect/Clock"
-import * as Encoding from "effect/Encoding"
+import * as Base64Url from "effect/encoding/Base64Url"
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Option from "effect/Option"
@@ -79,7 +79,7 @@ const decodeFinancialVerificationSignature = (
   tenantId: string,
   legalEntityId: string,
 ) =>
-  Effect.fromResult(Encoding.decodeBase64Url(signature)).pipe(
+  Effect.fromResult(Base64Url.decode(signature)).pipe(
     Effect.mapError(() =>
       new FinancialVerificationArtifactInvalid({ tenantId, legalEntityId, reason: "unsigned" })
     ),
@@ -346,7 +346,7 @@ export const makeAccountingTestLayer = () =>
                 })
               ),
             )
-            const signature = Encoding.encodeBase64Url(signatureBytes)
+            const signature = Base64Url.encode(signatureBytes)
             const artifact: FinancialVerificationArtifact = {
               id: nextId(),
               tenantId: decoded.tenantId,

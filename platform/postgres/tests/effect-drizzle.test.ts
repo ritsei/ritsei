@@ -2,7 +2,7 @@ import { assert, it } from "@effect/vitest"
 import { PgClient } from "@effect/sql-pg/PgClient"
 import { makeWithDefaults } from "drizzle-orm/effect-postgres"
 import * as Effect from "effect/Effect"
-import * as HttpApi from "effect/unstable/httpapi/HttpApi"
+import * as HttpApi from "effect/http-api/HttpApi"
 
 it("resolves Effect and Drizzle through the npm package topology", () => {
   assert.strictEqual(typeof PgClient, "function")

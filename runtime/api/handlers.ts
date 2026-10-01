@@ -1,8 +1,8 @@
 import * as Effect from "effect/Effect"
 import * as Layer from "effect/Layer"
 import * as Redacted from "effect/Redacted"
-import * as HttpApiBuilder from "effect/unstable/httpapi/HttpApiBuilder"
-import * as HttpApiSchema from "effect/unstable/httpapi/HttpApiSchema"
+import * as HttpApiBuilder from "effect/http-api/HttpApiBuilder"
+import * as HttpApiSchema from "effect/http-api/HttpApiSchema"
 
 import {
   AuthService,

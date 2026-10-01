@@ -196,7 +196,7 @@ const providerSpecifiers = [
   /^anthropic(?:\/|$)/,
   /^ollama(?:\/|$)/,
   /^groq-sdk(?:\/|$)/,
-  /^effect\/unstable\/ai(?:\/|$)/,
+  /^effect\/ai(?:\/|$)/,
 ] as const
 const privateSpecifier =
   /(?:^|\/)(?:db\/schema|migrations?|repositories?|repository|tables?|table|postgres)(?:\/|\.|$)/i

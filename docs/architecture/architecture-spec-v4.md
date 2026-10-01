@@ -128,7 +128,7 @@ workspace boundary that owns their consumption: the root `package.json` owns rep
 and tooling, while `apps/web/package.json` owns dependencies used exclusively by the web application.
 Each owner keeps its exact dependency versions; Deno uses `preferPackageJson: true` and
 `nodeModulesDir: "auto"` so package exports and peers resolve through the conventional local
-`node_modules` topology. The Effect and Deno adapter packages are aligned on `4.0.0-rc.111`; vendored
+`node_modules` topology. The Effect and Deno adapter packages are aligned on `4.0.0`; vendored
 Effect source and the Drizzle subtree remain reference-only.
 
 ### Dependency Ownership
