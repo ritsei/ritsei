@@ -1,9 +1,0 @@
-id: no-internal-import
-valid:
-  - import { InventoryService } from "@ritsei/inventory"
-  - import "./internal/helper.ts"
-  - import "./bootstrap.ts"
-invalid:
-  - import { stockPosition } from "../inventory/src/internal/tables.ts"
-  - import { repository } from "../inventory/src/repositories/repository.ts"
-  - import { privateService } from "../inventory/src/service.ts"

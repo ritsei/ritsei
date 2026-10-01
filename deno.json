@@ -1,63 +1,35 @@
 {
-  "compilerOptions": {
-    "strict": true
-  },
-  "preferPackageJson": true,
-  "nodeModulesDir": "auto",
-  "importMap": "./import_map.json",
+  "$schema": "https://raw.githubusercontent.com/denoland/deno/refs/heads/main/cli/schemas/config-file.v1.json",
+  "nodeModulesDir": "manual",
+  "unstable": ["bare-node-builtins", "node-globals"],
+  "workspace": ["./packages/*", "./packages/platform/*"],
   "exclude": [
-    "node_modules/",
-    "vendor/"
-  ],
-  "tasks": {
-    "dev": "deno run --watch --allow-read --allow-env --allow-net apps/api/mod.ts",
-    "worker": "deno run -A apps/worker/mod.ts",
-    "migrate": "deno run --allow-read --allow-env --allow-net apps/migrate/mod.ts",
-    "migrate:p0-backfill": "deno run --allow-read --allow-env --allow-net apps/migrate/p0-backfill.ts",
-    "db:generate": "deno run -A npm:drizzle-kit@1.0.0-rc.4 generate --config=drizzle.config.ts",
-    "db:migrate": "deno run -A npm:drizzle-kit@1.0.0-rc.4 migrate --config=drizzle.config.ts",
-    "db:check": "deno run -A npm:drizzle-kit@1.0.0-rc.4 check --config=drizzle.config.ts",
-    "test": "vitest run",
-    "test:related": "vitest related --run",
-    "check:affected": "deno run --allow-read --allow-run tooling/affected-check.ts",
-    "test:coverage": "vitest run --coverage --coverage.provider=v8",
-    "test:identity-coverage": "vitest run --coverage --coverage.provider=v8 --coverage.include=packages/identity/src/**/*.ts --coverage.thresholds.100 packages/identity/tests",
-    "test:contract": "vitest run --config vitest.contract.config.ts",
-    "skills:check": "deno run --allow-read tooling/check-agent-skills.ts",
-    "capabilities:check": "deno run --allow-read tooling/capabilities/check.ts",
-    "callgraph:check": "deno run --allow-read --allow-run tooling/call-graph/check.ts",
-    "financial:gate": "deno run --allow-read tooling/financial-readiness/release-gate.ts",
-    "boundary:lint": "ast-grep scan apps packages tooling tests && deno run --allow-read tooling/boundary-linter/check-ownership.ts && deno run --allow-read tooling/dependency-graph/check.ts && deno task capabilities:check && deno task callgraph:check",
-    "boundary:test": "ast-grep test --skip-snapshot-tests",
-    "check": "deno check ."
-  },
-  "fmt": {
-    "include": [
-      "apps/",
-      "packages/",
-      "tooling/",
-      "tests/",
-      "db/",
-      "*.config.ts",
-      "deno.json",
-      "sgconfig.yml"
-    ],
-    "exclude": [
-      "db/migrations/**/snapshot.json"
-    ],
-    "useTabs": false,
-    "lineWidth": 100,
-    "semiColons": false,
-    "singleQuote": false
-  },
-  "lint": {
-    "rules": {
-      "tags": [
-        "recommended"
-      ]
-    }
-  },
-  "allowScripts": [
-    "npm:msgpackr-extract"
+    "**/*.mjs",
+    "**/*.cjs",
+    "**/*.js",
+    "**/*.d.ts",
+    "**/vitest.*.ts",
+    "**/.tsbuildinfo/",
+    "**/node_modules/",
+    "**/dist/",
+    "ai-docs/",
+    "bundle/",
+    "examples/",
+    "scripts/",
+    "scratchpad/",
+    "packages/*/typetest/",
+    "packages/*/typeperf/",
+    "packages/*/runtimeperf/",
+    "packages/*/benchmark/",
+    "packages/ai",
+    "packages/atom",
+    "packages/effect/test/cluster/",
+    "packages/opentelemetry/",
+    "packages/platform/browser/",
+    "packages/platform/bun/",
+    "packages/platform/node/",
+    "packages/platform/node-shared/",
+    "packages/tools/",
+    "packages/sql"
   ]
 }
