@@ -31,7 +31,7 @@
     "npm:motion@13.2.0": "13.2.0",
     "npm:pdfnative@*": "1.7.0",
     "npm:pdfnative@1.7.0": "1.7.0",
-    "npm:playwright@1.62.1": "1.62.1",
+    "npm:playwright@1.63.0": "1.63.0",
     "npm:postgres@3.4.7": "3.4.7",
     "npm:solid-js@2.0.0-rc.6": "2.0.0-rc.6",
     "npm:storybook-solidjs-vite@11.0.0-next-20260903183420": "11.0.0-next-20260903183420_@solidjs+web@2.0.0-rc.6_solid-js@2.0.0-rc.6_storybook@11.0.0-alpha.0_typescript@6.0.3_vite@8.2.2",
@@ -55,8 +55,7 @@
     "@axe-core/playwright@4.13.0_playwright-core@1.62.1": {
       "integrity": "sha512-6YLx+kxXu5GJceG4ozFg+33a2EMTdjYwWGloJ3sb9Kta5pp+ZNS53uxGVog5JetIY8s++P5UrtX+cri+u0VAVg==",
       "dependencies": [
-        "axe-core",
-        "playwright-core"
+        "axe-core"
       ]
     },
     "@babel/code-frame@7.29.7": {
@@ -2327,11 +2326,6 @@
         "universalify"
       ]
     },
-    "fsevents@2.3.2": {
-      "integrity": "sha512-xiqMQR4xAeHTuB9uWm+fFRcIOgKBMiOBP+eXiyT7jsgVCq1bkVygt00oASowB7EdtpOHaaPgKt812P9ab+DDKA==",
-      "os": ["darwin"],
-      "scripts": true
-    },
     "fsevents@2.3.3": {
       "integrity": "sha512-5xoDfX+fL7faATnagmWPpbFtwh/R77WmMMqqHGS65C3vvB0YHrgF+B1YmZ3441tMj5n63k0212XNoJwzlhffQw==",
       "os": ["darwin"],
@@ -2923,17 +2917,14 @@
         "pathe"
       ]
     },
-    "playwright-core@1.62.1": {
-      "integrity": "sha512-wPYSwEBJY9GHraISXqyqtx0na0LpO3XEX7jNDhntbex7tzUS7kLnZsOlFruFJB4Hi/rhDMjXGqHewDZ68nYZVw==",
+    "playwright-core@1.63.0": {
+      "integrity": "sha512-rYCsBF/M5HjUch52bbtVONEFjv6Xu8sm8h72dNlR5bzIE1fvC/bxgspzkjSfU+MweEMmPM8KJebG6nnyxo5mCg==",
       "bin": true
     },
-    "playwright@1.62.1": {
-      "integrity": "sha512-0M+L3LAD8/nm554LOla9Ayx0j0tmFZ0FBcoQ7F1VuVHpM/XpiC8RcDzBQB8W5+hA8L22THxELzeF+2WcUzvcLg==",
+    "playwright@1.63.0": {
+      "integrity": "sha512-+7ziBLidS4NaNCdt57SUDT+wYmmd5fmiQejUic/kb+YsYSCPyOOE9sebzMjNmQrsnNpDJqd4WHvV/8lfKfUDUg==",
       "dependencies": [
         "playwright-core"
-      ],
-      "optionalDependencies": [
-        "fsevents@2.3.2"
       ],
       "bin": true
     },
@@ -3374,7 +3365,7 @@
         "tinyglobby"
       ],
       "optionalDependencies": [
-        "fsevents@2.3.3"
+        "fsevents"
       ],
       "bin": true
     },
@@ -3460,7 +3451,7 @@
         "npm:fallow@3.20.0",
         "npm:lefthook@2.1.15",
         "npm:pdfnative@1.7.0",
-        "npm:playwright@1.62.1",
+        "npm:playwright@1.63.0",
         "npm:postgres@3.4.7",
         "npm:tigerbeetle-node@0.17.9",
         "npm:typescript@6.0.3",
