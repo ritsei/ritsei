@@ -44,7 +44,12 @@ cd /mnt/c/Users/ricky/Documents/ritsei
 nix develop
 ```
 
-`flake.nix` supplies Deno, Node.js, Git, Go, Zig, `protoc`, and PostgreSQL 19.
+`flake.nix` supplies Deno, Node.js, pnpm, ast-grep, Git, Go, Zig, `protoc`,
+PostgreSQL 19, TigerBeetle, and Playwright's Chromium browsers. The npm
+`playwright` and `tigerbeetle-node` pins in `package.json` must match the nixpkgs
+releases; the flake fails evaluation with an explicit message when they drift, so
+align them in the same change that updates `flake.lock`. CI runs
+`nix flake check --all-systems` to catch that drift.
 The shell exports the local development connection as:
 
 ```text
@@ -54,6 +59,21 @@ PGDATA=$HOME/.local/share/ritsei/postgresql
 
 The flake is Linux-only because WSL2 is the execution boundary; the source
 worktree remains on Windows.
+
+### Prebuilt npm binaries on NixOS
+
+Some npm packages ship prebuilt executables linked against
+`/lib64/ld-linux-x86-64.so.2`, which NixOS does not provide by default. Fallow
+(`deno task fallow:*`, used by `boundary:lint` and `fallow:audit`) is one of
+them. Enable `nix-ld` in the NixOS-WSL system configuration:
+
+```nix
+programs.nix-ld.enable = true;
+```
+
+Playwright does not need `nix-ld`: the shell sets `PLAYWRIGHT_BROWSERS_PATH` to
+the nixpkgs Chromium and headless shell and disables browser downloads, so skip
+`deno task --cwd apps/web browser:install` inside `nix develop`.
 
 ## 3. Initialize PostgreSQL 19 in WSL
 
