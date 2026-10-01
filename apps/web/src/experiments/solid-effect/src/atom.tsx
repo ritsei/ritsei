@@ -1,7 +1,7 @@
 import { Cause, Effect } from "effect";
-import * as AsyncResult from "effect/unstable/reactivity/AsyncResult";
-import * as Atom from "effect/unstable/reactivity/Atom";
-import * as AtomRegistry from "effect/unstable/reactivity/AtomRegistry";
+import * as AsyncResult from "effect/reactivity/AsyncResult";
+import * as Atom from "effect/reactivity/Atom";
+import * as AtomRegistry from "effect/reactivity/AtomRegistry";
 import {
   createContext,
   createEffect,
@@ -33,7 +33,7 @@ import {
   searchPackages,
 } from "./api";
 
-// @effect/atom-solid@4.0.0-rc.112 still imports Solid 1-only APIs. This tiny
+// @effect/atom-solid@4.0.0 still imports Solid 1-only APIs. This tiny
 // Solid 2 bridge keeps the same RegistryProvider/useAtom surface over Atom's
 // public registry until the official binding has a Solid 2 peer-compatible release.
 const RegistryContext = createContext<AtomRegistry.AtomRegistry>();
