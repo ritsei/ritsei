@@ -18,6 +18,9 @@ The two paths are the same directory. Keep PostgreSQL data and caches under the
 WSL home directory, not inside `/mnt/c`; Linux-heavy I/O across the Windows mount
 can be slower.
 
+To keep an existing Ubuntu distribution instead of NixOS, see
+[Ubuntu on WSL2 with multi-user Nix](#ubuntu-on-wsl2-with-multi-user-nix).
+
 ## 1. Clone on Windows
 
 Run this once in PowerShell:
@@ -111,6 +114,45 @@ PowerShell can invoke the same WSL shell without changing the repository path:
 wsl -d NixOS --cd /mnt/c/Users/ricky/Documents/ritsei nix develop --command deno task check
 wsl -d NixOS --cd /mnt/c/Users/ricky/Documents/ritsei nix develop --command deno task test
 ```
+
+## Ubuntu on WSL2 with multi-user Nix
+
+This alternative keeps an existing Ubuntu distribution and its tools, and adds
+Nix alongside them. Clone the repository inside the WSL filesystem, for example
+`~/projects/ritsei`, rather than under `/mnt/c`; the whole toolchain then runs on
+the Linux filesystem.
+
+The Nix daemon runs as a systemd service, so enable systemd first. Check that
+`/etc/wsl.conf` contains:
+
+```ini
+[boot]
+systemd=true
+```
+
+If you add it, run `wsl --shutdown` from PowerShell and reopen the distribution.
+Then install Nix in multi-user mode and enable flakes, which `flake.nix`
+requires:
+
+```sh
+sh <(curl --proto '=https' --tlsv1.2 -L https://nixos.org/nix/install) --daemon
+echo 'experimental-features = nix-command flakes' | sudo tee -a /etc/nix/nix.conf
+sudo systemctl restart nix-daemon
+```
+
+Open a new terminal, then enter the shell from the repository:
+
+```sh
+cd ~/projects/ritsei
+nix flake check --all-systems
+nix develop
+```
+
+Ubuntu provides `/lib64/ld-linux-x86-64.so.2`, so prebuilt npm binaries such as
+Fallow run without `nix-ld`. If another version manager such as mise also adds
+Deno or Node.js to `PATH`, confirm that `which deno` resolves to `/nix/store`
+inside the shell, or run commands through `nix develop --command`. Continue with
+[Initialize PostgreSQL 19 in WSL](#3-initialize-postgresql-19-in-wsl).
 
 ## PostgreSQL through Compose instead
 
