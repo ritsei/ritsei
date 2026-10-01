@@ -6,6 +6,7 @@
   },
   "preferPackageJson": true,
   "nodeModulesDir": "auto",
+  "minimumDependencyAge": "PT6H",
   "exclude": [
     "node_modules/",
     "vendor/"
